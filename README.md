@@ -9,9 +9,9 @@ Run LoRA/LoKr training for the Newbie-image model on Modal.
 
 实现参考了三个来源：
 
-- `F:\Modal\Faster-Whisper-TransWithAI-ChickenRice\`：轻量本地 submitter、Modal Volume 上传、远端 clone/update、dict payload 返回。
-- `F:\Modal-ComfyUI\modal-comfyui\`：Modal Volume 管理和 TUI 菜单风格。
-- `https://cnb.cool/xChenNing/Newbie-Lora-Trainer-Public.git`：Newbie 训练入口和配置布局。
+- [TransWithAI/Faster-Whisper-TransWithAI-ChickenRice](https://github.com/TransWithAI/Faster-Whisper-TransWithAI-ChickenRice)：轻量本地 submitter、Modal Volume 上传、远端 clone/update、dict payload 返回。
+- [Xenoxenox/modal-comfyui](https://github.com/Xenoxenox/Newbie-Lora-Training-on-Modal)：Modal Volume 管理和 TUI 菜单风格。
+- [xChenNing/Newbie-Lora-Trainer-Public](https://cnb.cool/xChenNing/Newbie-Lora-Trainer-Public/-/tree/main)：Newbie 训练入口和配置布局。
 
 ## 安装
 
