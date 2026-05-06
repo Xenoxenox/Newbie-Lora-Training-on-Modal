@@ -1,4 +1,6 @@
-# Modal Newbie-image LoRA Trainer
+# Newbie-Lora-Training-on-Modal
+
+Run LoRA/LoKr training for the Newbie-image model on Modal.
 
 这个项目提供两个入口：
 
