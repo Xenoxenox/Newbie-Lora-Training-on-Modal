@@ -1,0 +1,42 @@
+[Model]
+base_model_path = "/workspace/Models"
+trust_remote_code = true
+output_dir = "/workspace/jobs/example-lokr/output"
+output_name = "newbie_lokr"
+adapter_type = "lyco_lokr"
+
+train_data_dir = "/workspace/jobs/example-lokr/dataset"
+resolution = 1024
+dataloader_num_workers = 8
+enable_bucket = true
+use_cache = true
+gemma3_prompt = "You are an assistant designed to generate high-quality anime images with the highest degree of image-text alignment based on textual prompts. <Prompt Start>"
+
+train_batch_size = 1
+num_epochs = 24
+save_epochs_interval = 1
+learning_rate = 1e-4
+lr_scheduler = "cosine"
+lr_warmup_steps = 0
+gradient_checkpointing = true
+mixed_precision = "bf16"
+
+lokr_rank = 114514
+lokr_alpha = 114514
+lokr_train_norm = true
+lokr_dropout = 0.05
+lokr_rank_dropout = 0.0
+lokr_module_dropout = 0.0
+lokr_factor = 8
+lokr_target_modules = [
+    "attention.qkv",
+    "attention.out",
+    "feed_forward.w2",
+    "time_text_embed.1",
+    "clip_text_pooled_proj.1",
+]
+
+[Optimization]
+optimizer_type = "AdamW8bit"
+gradient_clip_norm = 1.0
+use_flash_attention_2 = true

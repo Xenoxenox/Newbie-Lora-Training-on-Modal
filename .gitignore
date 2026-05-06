@@ -1,0 +1,10 @@
+.firecrawl/
+.refs/
+__pycache__/
+*.pyc
+.env
+.venv/
+venv/
+outputs/
+logs/
+*.zip
