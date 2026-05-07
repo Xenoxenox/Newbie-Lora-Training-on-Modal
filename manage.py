@@ -8,10 +8,15 @@ import questionary
 from questionary import Style
 
 from modal_newbie_train import (
+    DEFAULT_HF_REPO,
+    DEFAULT_HF_SECRET,
     DEFAULT_VOLUME,
     TrainJob,
-    list_volume,
-    remove_volume_path,
+    delete_volume,
+    download_hf_model_to_volume,
+    get_volume_dashboard_url,
+    list_all_volumes,
+    rename_volume,
     run_remote_training,
     safe_slug,
 )
@@ -197,29 +202,65 @@ def run_training_flow() -> None:
         print(result.get("log_tail", ""))
 
 
-def volume_browser_flow() -> None:
-    # Volume listing is read-only and safe for checking uploaded configs, datasets, and outputs.
-    path = ask_text("Volume path", "/jobs")
-    items = list_volume(DEFAULT_VOLUME, path)
-    if not items:
-        print("\nNo entries.")
-        return
-    print()
-    for item in items:
-        size = "" if item["size"] is None else f" {item['size']} bytes"
-        print(f"{item['type']:>12} {item['path']}{size}")
+def volume_management_flow() -> None:
+    while True:
+        action = ask_select(
+            "Volume management",
+            ["List", "Delete", "Rename", "Dashboard", "Back"],
+        )
+        if action == "Back":
+            return
+        elif action == "List":
+            volumes = list_all_volumes()
+            if not volumes:
+                print("\nNo volumes found.")
+            else:
+                print()
+                for v in volumes:
+                    print(f"  {v['name']:40s} {v['id']}")
+        elif action == "Delete":
+            name = ask_text("Volume name to delete", DEFAULT_VOLUME)
+            if not ask_confirm(f"Delete volume '{name}' and ALL of its data?", False):
+                continue
+            delete_volume(name)
+            print(f"Deleted volume '{name}'")
+        elif action == "Rename":
+            old_name = ask_text("Current volume name", DEFAULT_VOLUME)
+            new_name = ask_text("New volume name", "")
+            if not new_name:
+                print("No new name provided.")
+                continue
+            rename_volume(old_name, new_name)
+            print(f"Renamed '{old_name}' → '{new_name}'")
+        elif action == "Dashboard":
+            name = ask_text("Volume name", DEFAULT_VOLUME)
+            url = get_volume_dashboard_url(name)
+            import webbrowser
+            webbrowser.open(url)
+            print(f"Opened {url}")
+        print()
 
 
-def cleanup_flow() -> None:
-    # Deletion is intentionally interactive; never allow the Volume root to be removed here.
-    path = ask_text("Volume path to delete", "/jobs/")
-    if not path or path == "/":
-        print("Refusing to delete root.")
+def load_model_flow() -> None:
+    # Newbie training configs expect the base model to live at /workspace/Models.
+    repo = ask_text("HF repo or URL", DEFAULT_HF_REPO)
+    if not repo:
+        print("No repo provided.")
         return
-    if not ask_confirm(f"Delete {path} from Modal Volume {DEFAULT_VOLUME}?", False):
-        return
-    remove_volume_path(DEFAULT_VOLUME, path, recursive=True)
-    print(f"Deleted {path}")
+    revision = ask_text("Revision (blank for default)", "")
+    timeout = int(ask_text("Timeout minutes", "360"))
+    hf_secret = ask_text("Modal Secret name for HF_TOKEN", DEFAULT_HF_SECRET)
+    result = download_hf_model_to_volume(repo, revision or None, DEFAULT_VOLUME, timeout, hf_secret)
+
+    print("\nModel load finished.")
+    print(f"OK: {result.get('ok')}")
+    print(f"Remote path: {result.get('remote_path')}")
+    if result.get("file_count") is not None:
+        print(f"Files: {result.get('file_count')}")
+    if result.get("bytes") is not None:
+        print(f"Bytes: {result.get('bytes')}")
+    if result.get("error"):
+        print(f"Error: {result['error']}")
 
 
 def main() -> None:
@@ -237,20 +278,20 @@ def main() -> None:
             "Action",
             [
                 "Run training",
+                "Load model to Volume",
                 "Create config",
-                "List Modal Volume",
-                "Delete Volume path",
+                "Volume management",
                 "Quit",
             ],
         )
         if action == "Run training":
             run_training_flow()
+        elif action == "Load model to Volume":
+            load_model_flow()
         elif action == "Create config":
             create_config_flow()
-        elif action == "List Modal Volume":
-            volume_browser_flow()
-        elif action == "Delete Volume path":
-            cleanup_flow()
+        elif action == "Volume management":
+            volume_management_flow()
         else:
             return
         print()
