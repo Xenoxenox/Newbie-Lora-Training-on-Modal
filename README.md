@@ -51,7 +51,26 @@ Modal Volume 会挂载到远端 `/workspace`。默认布局：
 /workspace/jobs/<job>/output            # 训练输出
 ```
 
-需要先把 Newbie-image 模型文件放到 Modal Volume 的 `/Models`。可以用 Modal CLI、单独脚本或临时 notebook 上传；训练配置里的 `base_model_path` 默认就是 `/workspace/Models`。
+需要先把 Newbie-image 模型文件放到 Modal Volume 的 `/Models`。训练配置里的 `base_model_path` 默认就是 `/workspace/Models`，本项目通过 TUI 或 CLI 从 Hugging Face 下载 snapshot 到该目录。
+
+如果模型仓库需要 Hugging Face token，先在 Modal 创建 Secret。默认 Secret 名称为 `LoRATraining`，其中的键名为 `HF_TOKEN`：
+
+```powershell
+modal secret create LoRATraining HF_TOKEN=hf_xxx
+```
+
+从 Hugging Face 下载完整 diffusers snapshot 到 `/workspace/Models`（默认仓库 `NewBie-AI/NewBie-image-Exp0.1`）：
+
+```powershell
+# 使用默认仓库
+python modal_newbie_train.py model-download-hf
+
+# 指定其他仓库
+python modal_newbie_train.py model-download-hf --repo owner/name
+
+# 指定 revision
+python modal_newbie_train.py model-download-hf --revision main
+```
 
 ## 无头运行
 
@@ -85,9 +104,9 @@ python manage.py
 TUI 支持：
 
 - 生成 LoRA/LoKr job TOML。
+- 从 Hugging Face 下载基础模型到 Modal Volume。
 - 上传本地数据集并启动 Modal 训练。
-- 列出 Modal Volume 路径。
-- 确认后删除指定 Volume 路径。
+- Volume 管理：列出、删除、重命名 Volume，打开 Dashboard。
 
 ## 配置要点
 
