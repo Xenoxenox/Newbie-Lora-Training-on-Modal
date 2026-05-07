@@ -8,3 +8,5 @@ venv/
 outputs/
 logs/
 *.zip
+configs/jobs/*
+!configs/jobs/.gitkeep

@@ -13,6 +13,23 @@ Run LoRA/LoKr training for the Newbie-image model on Modal.
 - [Xenoxenox/modal-comfyui](https://github.com/Xenoxenox/Newbie-Lora-Training-on-Modal)：Modal Volume 管理和 TUI 菜单风格。
 - [xChenNing/Newbie-Lora-Trainer-Public](https://cnb.cool/xChenNing/Newbie-Lora-Trainer-Public/-/tree/main)：Newbie 训练入口和配置布局。
 
+## 目录结构
+
+```text
+Newbie-Lora-Training-on-Modal/
+├── manage.py                     # 交互式 TUI：生成配置、上传数据、启动训练、管理 Volume
+├── modal_newbie_train.py         # 无头 CLI：提交 Modal 远程训练任务
+├── requirements.txt              # 本地运行依赖
+├── README.md                     # 项目说明
+├── AGENTS.md                     # 贡献者与代理协作指南
+├── configs/
+│   ├── example_lora.toml         # LoRA 示例配置
+│   ├── example_lokr.toml         # LoKr 示例配置
+│   └── jobs/                     # TUI 生成的 job 配置
+├── outputs/                      # 小体积训练产物回传目录，Git 忽略
+└── logs/                         # 本地日志目录，Git 忽略
+```
+
 ## 安装
 
 ```powershell

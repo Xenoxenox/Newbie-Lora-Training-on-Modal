@@ -17,6 +17,7 @@ from modal_newbie_train import (
 )
 
 
+# Keep all TUI prompts on the same questionary theme so the menu reads as one tool.
 STYLE = Style(
     [
         ("qmark", "fg:#7ee787 bold"),
@@ -66,6 +67,7 @@ def render_lora_config(
     batch_size: int,
     learning_rate: str,
 ) -> str:
+    # The generated TOML mirrors the remote /workspace layout used by Modal.
     common = f"""[Model]
 base_model_path = "/workspace/Models"
 trust_remote_code = true
@@ -88,6 +90,7 @@ mixed_precision = "bf16"
 """
 
     if adapter == "LoKr":
+        # LoKr keeps the upstream example's intentionally high rank/alpha defaults.
         adapter_block = """adapter_type = "lyco_lokr"
 lokr_rank = 114514
 lokr_alpha = 114514
@@ -105,6 +108,7 @@ lokr_target_modules = [
 ]
 """
     else:
+        # LoRA uses smaller defaults for quicker iteration and lower memory pressure.
         adapter_block = """lora_rank = 32
 lora_alpha = 32
 lora_dropout = 0.05
@@ -127,6 +131,7 @@ use_flash_attention_2 = true
 
 
 def create_config_flow() -> Path:
+    # Generated configs are kept separate from hand-written examples.
     JOB_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     default_name = dt.datetime.now().strftime("newbie-%Y%m%d-%H%M")
     job_name = ask_text("Job name", default_name)
@@ -148,6 +153,7 @@ def create_config_flow() -> Path:
 
 
 def choose_config() -> Path:
+    # Offer every TOML under configs/ so examples and generated jobs share one picker.
     choices = sorted([p for p in CONFIG_DIR.rglob("*.toml") if p.is_file()])
     if not choices:
         return create_config_flow()
@@ -159,6 +165,7 @@ def choose_config() -> Path:
 
 
 def run_training_flow() -> None:
+    # This flow collects local choices and delegates all Modal work to the headless runner.
     config = choose_config()
     job_name = ask_text("Modal job name", config.stem)
     dataset = ask_text("Local dataset directory (blank to reuse uploaded Volume dataset)", "")
@@ -191,6 +198,7 @@ def run_training_flow() -> None:
 
 
 def volume_browser_flow() -> None:
+    # Volume listing is read-only and safe for checking uploaded configs, datasets, and outputs.
     path = ask_text("Volume path", "/jobs")
     items = list_volume(DEFAULT_VOLUME, path)
     if not items:
@@ -203,6 +211,7 @@ def volume_browser_flow() -> None:
 
 
 def cleanup_flow() -> None:
+    # Deletion is intentionally interactive; never allow the Volume root to be removed here.
     path = ask_text("Volume path to delete", "/jobs/")
     if not path or path == "/":
         print("Refusing to delete root.")
@@ -223,6 +232,7 @@ def main() -> None:
         ).strip()
     )
     while True:
+        # Re-enter the menu after each action so operators can inspect outputs or clean up.
         action = ask_select(
             "Action",
             [

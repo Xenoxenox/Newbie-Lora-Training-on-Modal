@@ -21,6 +21,8 @@ UPSTREAM_REPO = "https://cnb.cool/xChenNing/Newbie-Lora-Trainer-Public.git"
 
 @dataclasses.dataclass
 class TrainJob:
+    """Local job description that can be serialized into a Modal payload."""
+
     name: str
     config_path: Path
     dataset_path: Path | None
@@ -72,6 +74,7 @@ class TrainJob:
 
 
 def safe_slug(value: str) -> str:
+    # Keep job names valid for both Modal Volume paths and local output directories.
     slug = re.sub(r"[^a-zA-Z0-9_.-]+", "-", value.strip()).strip(".-")
     return slug or dt.datetime.now().strftime("job-%Y%m%d-%H%M%S")
 
@@ -83,6 +86,7 @@ def _load_modal():
 
 
 def build_image(modal: Any) -> Any:
+    # Build the remote runtime image lazily so local help/list commands stay lightweight.
     return (
         modal.Image.from_registry(
             "nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04",
@@ -105,6 +109,7 @@ def build_image(modal: Any) -> Any:
 
 
 def upload_job_inputs(job: TrainJob) -> None:
+    # Upload inputs into the shared Volume before launching the remote function.
     modal = _load_modal()
     volume = modal.Volume.from_name(job.volume_name, create_if_missing=True)
 
@@ -127,6 +132,8 @@ def upload_job_inputs(job: TrainJob) -> None:
 
 
 def _remote_train(payload: dict[str, Any]) -> dict[str, Any]:
+    """Runs inside Modal; keep imports local so the submitter stays dependency-light."""
+
     import base64
     import os
     from pathlib import Path
@@ -145,6 +152,7 @@ def _remote_train(payload: dict[str, Any]) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     def run(cmd: list[str], cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
+        # Mirror every setup command into train.log for post-run debugging.
         with log_path.open("a", encoding="utf-8") as log:
             log.write(f"\n$ {' '.join(cmd)}\n")
             log.flush()
@@ -162,6 +170,7 @@ def _remote_train(payload: dict[str, Any]) -> dict[str, Any]:
         return proc
 
     try:
+        # Refresh the upstream trainer on every run to match the selected branch/ref.
         if repo_dir.exists() and (repo_dir / ".git").exists():
             run(["git", "fetch", "--depth", "1", "origin", payload["trainer_ref"]], cwd=repo_dir, check=False)
             run(["git", "reset", "--hard", f"origin/{payload['trainer_ref']}"], cwd=repo_dir, check=False)
@@ -174,6 +183,7 @@ def _remote_train(payload: dict[str, Any]) -> dict[str, Any]:
         if payload["install_requirements"]:
             run([sys.executable, "-m", "pip", "install", "-U", "-r", str(requirements)])
 
+        # The XCN entry point is optional; both scripts consume the same generated config.
         train_script = "train_newbie_lora_xcn.py" if payload["use_xcn_trainer"] else "train_newbie_lora.py"
         command = [
             sys.executable,
@@ -204,6 +214,7 @@ def _remote_train(payload: dict[str, Any]) -> dict[str, Any]:
         zip_path = job_dir / "output.zip"
         artifacts = []
         if output_dir.exists():
+            # Collect artifact metadata first, then package outputs for small result downloads.
             for path in output_dir.rglob("*"):
                 if path.is_file():
                     artifacts.append(
@@ -221,6 +232,7 @@ def _remote_train(payload: dict[str, Any]) -> dict[str, Any]:
         returned_zip = None
         max_bytes = int(payload["max_return_mb"]) * 1024 * 1024
         if zip_path.exists() and zip_path.stat().st_size <= max_bytes:
+            # Modal return values must be JSON-friendly, so small zips are base64 encoded.
             returned_zip = {
                 "name": zip_path.name,
                 "bytes": zip_path.stat().st_size,
@@ -258,6 +270,7 @@ def _remote_train(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def run_remote_training(job: TrainJob) -> dict[str, Any]:
+    # This is the public submitter used by both the CLI and the TUI.
     if job.upload:
         upload_job_inputs(job)
 
@@ -290,6 +303,7 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
         serialized=True,
     )
     def modal_train(remote_payload: dict[str, Any]) -> dict[str, Any]:
+        # Reload before reading uploaded files and commit after outputs/logs are written.
         volume.reload()
         result = _remote_train(remote_payload)
         volume.commit()
@@ -299,6 +313,7 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
         result = modal_train.remote(payload)
 
     if result.get("returned_zip"):
+        # Persist small output bundles locally; large outputs remain in the Modal Volume.
         out_dir = Path("outputs") / job.slug
         out_dir.mkdir(parents=True, exist_ok=True)
         zip_info = result["returned_zip"]
@@ -323,6 +338,7 @@ def remove_volume_path(volume_name: str, path: str, recursive: bool = True) -> N
 
 
 def parse_args() -> argparse.Namespace:
+    # Keep CLI parsing in one place so the TUI can reuse the lower-level training functions.
     parser = argparse.ArgumentParser(
         description="Run Newbie-image LoRA training headlessly on Modal.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
