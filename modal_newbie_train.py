@@ -8,15 +8,21 @@ import json
 import os
 from pathlib import Path
 import re
+import sys
 import textwrap
 from typing import Any
 
 
 APP_NAME = "newbie-image-lora-train"
 DEFAULT_VOLUME = "newbie-image-lora"
+DEFAULT_HF_SECRET = "LoRATraining"
+DEFAULT_HF_REPO = "NewBie-AI/NewBie-image-Exp0.1"
 REMOTE_ROOT = "/workspace"
+REMOTE_MODELS_DIR = f"{REMOTE_ROOT}/Models"
+VOLUME_MODELS_DIR = "/Models"
 REMOTE_REPO_DIR = f"{REMOTE_ROOT}/Newbie-Lora-Trainer-Public"
 UPSTREAM_REPO = "https://cnb.cool/xChenNing/Newbie-Lora-Trainer-Public.git"
+LOCAL_PYTHON_VERSION = f"{sys.version_info.major}.{sys.version_info.minor}"
 
 
 @dataclasses.dataclass
@@ -90,7 +96,7 @@ def build_image(modal: Any) -> Any:
     return (
         modal.Image.from_registry(
             "nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04",
-            add_python="3.10",
+            add_python=LOCAL_PYTHON_VERSION,
         )
         .apt_install("git", "ffmpeg", "libgl1", "libglib2.0-0")
         .run_commands(
@@ -102,6 +108,21 @@ def build_image(modal: Any) -> Any:
             {
                 "HF_HOME": f"{REMOTE_ROOT}/.cache/huggingface",
                 "PIP_CACHE_DIR": f"{REMOTE_ROOT}/PipCache",
+                "PYTHONUNBUFFERED": "1",
+            }
+        )
+    )
+
+
+def build_model_loader_image(modal: Any) -> Any:
+    # Keep model loading separate from the heavier CUDA training image.
+    return (
+        modal.Image.debian_slim(python_version=LOCAL_PYTHON_VERSION)
+        .pip_install("huggingface-hub>=0.23.0", "hf-transfer>=0.1.6")
+        .env(
+            {
+                "HF_HOME": f"{REMOTE_ROOT}/.cache/huggingface",
+                "HF_HUB_ENABLE_HF_TRANSFER": "1",
                 "PYTHONUNBUFFERED": "1",
             }
         )
@@ -131,142 +152,93 @@ def upload_job_inputs(job: TrainJob) -> None:
         print(f"Uploaded dataset to volume:{job.volume_dataset} -> {job.remote_dataset}")
 
 
-def _remote_train(payload: dict[str, Any]) -> dict[str, Any]:
-    """Runs inside Modal; keep imports local so the submitter stays dependency-light."""
+def download_hf_model_to_volume(
+    repo_id: str,
+    revision: str | None = None,
+    volume_name: str = DEFAULT_VOLUME,
+    timeout_minutes: int = 360,
+    hf_secret_name: str = DEFAULT_HF_SECRET,
+) -> dict[str, Any]:
+    repo_id = repo_id.strip().removeprefix("https://huggingface.co/").strip("/")
+    if "/tree/" in repo_id:
+        repo_id, url_revision = repo_id.split("/tree/", 1)
+        revision = revision or url_revision.strip("/") or None
+    if not repo_id or "/" not in repo_id:
+        raise ValueError("Hugging Face repo must be in owner/name form or a huggingface.co URL.")
+    hf_secret_name = hf_secret_name.strip() or DEFAULT_HF_SECRET
 
-    import base64
-    import os
-    from pathlib import Path
-    import shutil
-    import subprocess
-    import sys
-    import time
-    import zipfile
+    modal = _load_modal()
+    volume = modal.Volume.from_name(volume_name, create_if_missing=True)
+    app = modal.App(f"{APP_NAME}-model-loader")
+    image = build_model_loader_image(modal)
 
-    repo_dir = Path(payload["repo_dir"])
-    job_dir = Path(payload["remote_job_dir"])
-    log_path = Path(payload["remote_log"])
-    output_dir = Path(payload["remote_output"])
-    config_file = Path(payload["remote_config"])
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "repo_id": repo_id,
+        "revision": revision,
+        "remote_models_dir": REMOTE_MODELS_DIR,
+    }
 
-    def run(cmd: list[str], cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
-        # Mirror every setup command into train.log for post-run debugging.
-        with log_path.open("a", encoding="utf-8") as log:
-            log.write(f"\n$ {' '.join(cmd)}\n")
-            log.flush()
-            proc = subprocess.run(
-                cmd,
-                cwd=str(cwd) if cwd else None,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-            )
-            log.write(proc.stdout)
-            log.flush()
-        if check and proc.returncode != 0:
-            raise RuntimeError(f"Command failed with exit {proc.returncode}: {' '.join(cmd)}")
-        return proc
+    @app.function(
+        image=image,
+        timeout=timeout_minutes * 60,
+        volumes={REMOTE_ROOT: volume},
+        secrets=[modal.Secret.from_name(hf_secret_name)],
+        serialized=True,
+    )
+    def modal_download_model(remote_payload: dict[str, Any]) -> dict[str, Any]:
+        import os
+        from pathlib import Path
+        import time
 
-    try:
-        # Refresh the upstream trainer on every run to match the selected branch/ref.
-        if repo_dir.exists() and (repo_dir / ".git").exists():
-            run(["git", "fetch", "--depth", "1", "origin", payload["trainer_ref"]], cwd=repo_dir, check=False)
-            run(["git", "reset", "--hard", f"origin/{payload['trainer_ref']}"], cwd=repo_dir, check=False)
-        else:
-            if repo_dir.exists():
-                shutil.rmtree(repo_dir)
-            run(["git", "clone", "--depth", "1", "--branch", payload["trainer_ref"], payload["repo_url"], str(repo_dir)])
+        from huggingface_hub import snapshot_download
 
-        requirements = repo_dir / "NewbieLoraTrainer" / "requirements.txt"
-        if payload["install_requirements"]:
-            run([sys.executable, "-m", "pip", "install", "-U", "-r", str(requirements)])
+        volume.reload()
 
-        # The XCN entry point is optional; both scripts consume the same generated config.
-        train_script = "train_newbie_lora_xcn.py" if payload["use_xcn_trainer"] else "train_newbie_lora.py"
-        command = [
-            sys.executable,
-            str(repo_dir / "NewbieLoraTrainer" / train_script),
-            "--config_file",
-            str(config_file),
-        ]
+        dl_repo_id = remote_payload["repo_id"]
+        dl_revision = remote_payload.get("revision") or None
+        target_dir = Path(remote_payload["remote_models_dir"])
+        target_dir.mkdir(parents=True, exist_ok=True)
 
         started = time.time()
-        with log_path.open("a", encoding="utf-8") as log:
-            log.write(f"\n$ {' '.join(command)}\n")
-            log.flush()
-            proc = subprocess.Popen(
-                command,
-                cwd=str(repo_dir),
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                bufsize=1,
+        try:
+            snapshot_download(
+                repo_id=dl_repo_id,
+                revision=dl_revision,
+                local_dir=str(target_dir),
+                token=os.environ.get("HF_TOKEN"),
             )
-            assert proc.stdout is not None
-            for line in proc.stdout:
-                print(line, end="")
-                log.write(line)
-                log.flush()
-            return_code = proc.wait()
 
-        zip_path = job_dir / "output.zip"
-        artifacts = []
-        if output_dir.exists():
-            # Collect artifact metadata first, then package outputs for small result downloads.
-            for path in output_dir.rglob("*"):
-                if path.is_file():
-                    artifacts.append(
-                        {
-                            "path": str(path),
-                            "bytes": path.stat().st_size,
-                            "relative": str(path.relative_to(output_dir)),
-                        }
-                    )
-            if artifacts:
-                with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-                    for item in artifacts:
-                        archive.write(item["path"], item["relative"])
-
-        returned_zip = None
-        max_bytes = int(payload["max_return_mb"]) * 1024 * 1024
-        if zip_path.exists() and zip_path.stat().st_size <= max_bytes:
-            # Modal return values must be JSON-friendly, so small zips are base64 encoded.
-            returned_zip = {
-                "name": zip_path.name,
-                "bytes": zip_path.stat().st_size,
-                "base64": base64.b64encode(zip_path.read_bytes()).decode("ascii"),
+            files = [p for p in target_dir.rglob("*") if p.is_file()]
+            total_bytes = sum(p.stat().st_size for p in files)
+            result = {
+                "ok": True,
+                "repo_id": dl_repo_id,
+                "revision": dl_revision,
+                "remote_path": str(target_dir),
+                "file_count": len(files),
+                "bytes": total_bytes,
+                "seconds": round(time.time() - started, 2),
+            }
+        except Exception as exc:
+            result = {
+                "ok": False,
+                "repo_id": dl_repo_id,
+                "revision": dl_revision,
+                "remote_path": str(target_dir),
+                "error": repr(exc),
+                "seconds": round(time.time() - started, 2),
             }
 
-        log_text = log_path.read_text(encoding="utf-8", errors="replace")
-        return {
-            "ok": return_code == 0,
-            "return_code": return_code,
-            "seconds": round(time.time() - started, 2),
-            "job_dir": str(job_dir),
-            "output_dir": str(output_dir),
-            "log_path": str(log_path),
-            "artifacts": artifacts,
-            "returned_zip": returned_zip,
-            "log_tail": log_text[-12000:],
-        }
-    except Exception as exc:
-        if log_path.exists():
-            log_tail = log_path.read_text(encoding="utf-8", errors="replace")[-12000:]
-        else:
-            log_tail = ""
-        return {
-            "ok": False,
-            "return_code": 999,
-            "error": repr(exc),
-            "job_dir": str(job_dir),
-            "output_dir": str(output_dir),
-            "log_path": str(log_path),
-            "artifacts": [],
-            "returned_zip": None,
-            "log_tail": log_tail,
-        }
+        volume.commit()
+        return result
+
+    print(
+        "\n正在创建 Volume 并下载模型，可能需要较长时间。\n"
+        "跟踪进度：modal app list && modal app logs <app-id> -f\n"
+        "或登录 https://modal.com/apps 查看。\n"
+    )
+    with app.run():
+        return modal_download_model.remote(payload)
 
 
 def run_remote_training(job: TrainJob) -> dict[str, Any]:
@@ -303,17 +275,151 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
         serialized=True,
     )
     def modal_train(remote_payload: dict[str, Any]) -> dict[str, Any]:
-        # Reload before reading uploaded files and commit after outputs/logs are written.
+        """Runs inside Modal; all imports are local so cloudpickle can serialize this."""
+
+        import base64
+        import os
+        from pathlib import Path
+        import shutil
+        import subprocess
+        import sys
+        import time
+        import zipfile
+
         volume.reload()
-        result = _remote_train(remote_payload)
+
+        repo_dir = Path(remote_payload["repo_dir"])
+        job_dir = Path(remote_payload["remote_job_dir"])
+        log_path = Path(remote_payload["remote_log"])
+        output_dir = Path(remote_payload["remote_output"])
+        config_file = Path(remote_payload["remote_config"])
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        def run(cmd: list[str], cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
+            with log_path.open("a", encoding="utf-8") as log:
+                log.write(f"\n$ {' '.join(cmd)}\n")
+                log.flush()
+                proc = subprocess.run(
+                    cmd,
+                    cwd=str(cwd) if cwd else None,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                )
+                log.write(proc.stdout)
+                log.flush()
+            if check and proc.returncode != 0:
+                raise RuntimeError(f"Command failed with exit {proc.returncode}: {' '.join(cmd)}")
+            return proc
+
+        try:
+            if repo_dir.exists() and (repo_dir / ".git").exists():
+                run(["git", "fetch", "--depth", "1", "origin", remote_payload["trainer_ref"]], cwd=repo_dir, check=False)
+                run(["git", "reset", "--hard", f"origin/{remote_payload['trainer_ref']}"], cwd=repo_dir, check=False)
+            else:
+                if repo_dir.exists():
+                    shutil.rmtree(repo_dir)
+                run(["git", "clone", "--depth", "1", "--branch", remote_payload["trainer_ref"], remote_payload["repo_url"], str(repo_dir)])
+
+            requirements = repo_dir / "NewbieLoraTrainer" / "requirements.txt"
+            if remote_payload["install_requirements"]:
+                run([sys.executable, "-m", "pip", "install", "-U", "-r", str(requirements)])
+
+            train_script = "train_newbie_lora_xcn.py" if remote_payload["use_xcn_trainer"] else "train_newbie_lora.py"
+            command = [
+                sys.executable,
+                str(repo_dir / "NewbieLoraTrainer" / train_script),
+                "--config_file",
+                str(config_file),
+            ]
+
+            started = time.time()
+            with log_path.open("a", encoding="utf-8") as log:
+                log.write(f"\n$ {' '.join(command)}\n")
+                log.flush()
+                proc = subprocess.Popen(
+                    command,
+                    cwd=str(repo_dir),
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    bufsize=1,
+                )
+                assert proc.stdout is not None
+                for line in proc.stdout:
+                    print(line, end="")
+                    log.write(line)
+                    log.flush()
+                return_code = proc.wait()
+
+            zip_path = job_dir / "output.zip"
+            artifacts = []
+            if output_dir.exists():
+                for path in output_dir.rglob("*"):
+                    if path.is_file():
+                        artifacts.append(
+                            {
+                                "path": str(path),
+                                "bytes": path.stat().st_size,
+                                "relative": str(path.relative_to(output_dir)),
+                            }
+                        )
+                if artifacts:
+                    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                        for item in artifacts:
+                            archive.write(item["path"], item["relative"])
+
+            returned_zip = None
+            max_bytes = int(remote_payload["max_return_mb"]) * 1024 * 1024
+            if zip_path.exists() and zip_path.stat().st_size <= max_bytes:
+                returned_zip = {
+                    "name": zip_path.name,
+                    "bytes": zip_path.stat().st_size,
+                    "base64": base64.b64encode(zip_path.read_bytes()).decode("ascii"),
+                }
+
+            log_text = log_path.read_text(encoding="utf-8", errors="replace")
+            result = {
+                "ok": return_code == 0,
+                "return_code": return_code,
+                "seconds": round(time.time() - started, 2),
+                "job_dir": str(job_dir),
+                "output_dir": str(output_dir),
+                "log_path": str(log_path),
+                "artifacts": artifacts,
+                "returned_zip": returned_zip,
+                "log_tail": log_text[-12000:],
+            }
+        except Exception as exc:
+            if log_path.exists():
+                log_tail = log_path.read_text(encoding="utf-8", errors="replace")[-12000:]
+            else:
+                log_tail = ""
+            result = {
+                "ok": False,
+                "return_code": 999,
+                "error": repr(exc),
+                "job_dir": str(job_dir),
+                "output_dir": str(output_dir),
+                "log_path": str(log_path),
+                "artifacts": [],
+                "returned_zip": None,
+                "log_tail": log_tail,
+            }
+
         volume.commit()
         return result
 
+    print(
+        "\n正在启动远程训练，可能需要较长时间。\n"
+        "跟踪进度：modal app list && modal app logs <app-id> -f\n"
+        "或登录 https://modal.com/apps 查看。\n"
+    )
     with app.run():
         result = modal_train.remote(payload)
 
     if result.get("returned_zip"):
-        # Persist small output bundles locally; large outputs remain in the Modal Volume.
         out_dir = Path("outputs") / job.slug
         out_dir.mkdir(parents=True, exist_ok=True)
         zip_info = result["returned_zip"]
@@ -327,7 +433,10 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
 def list_volume(volume_name: str = DEFAULT_VOLUME, path: str = "/") -> list[dict[str, Any]]:
     modal = _load_modal()
     volume = modal.Volume.from_name(volume_name, create_if_missing=True)
-    return [dict(path=str(item.path), type=str(item.type), size=getattr(item, "size", None)) for item in volume.listdir(path)]
+    try:
+        return [dict(path=str(item.path), type=str(item.type), size=getattr(item, "size", None)) for item in volume.listdir(path)]
+    except modal.exception.NotFoundError:
+        return []
 
 
 def remove_volume_path(volume_name: str, path: str, recursive: bool = True) -> None:
@@ -335,6 +444,31 @@ def remove_volume_path(volume_name: str, path: str, recursive: bool = True) -> N
     volume = modal.Volume.from_name(volume_name, create_if_missing=True)
     volume.remove_file(path, recursive=recursive)
     volume.commit()
+
+
+def list_all_volumes() -> list[dict[str, str]]:
+    """List all Modal volumes in the active environment."""
+    modal = _load_modal()
+    return [{"name": v.name, "id": v.object_id} for v in modal.Volume.objects.list()]
+
+
+def delete_volume(volume_name: str) -> None:
+    """Delete a named Modal volume and all of its data."""
+    modal = _load_modal()
+    modal.Volume.delete(volume_name)
+
+
+def rename_volume(old_name: str, new_name: str) -> None:
+    """Rename a Modal volume."""
+    modal = _load_modal()
+    modal.Volume.rename(old_name, new_name)
+
+
+def get_volume_dashboard_url(volume_name: str) -> str:
+    """Get the dashboard URL for a Modal volume."""
+    modal = _load_modal()
+    volume = modal.Volume.from_name(volume_name)
+    return volume.get_dashboard_url()
 
 
 def parse_args() -> argparse.Namespace:
@@ -347,6 +481,7 @@ def parse_args() -> argparse.Namespace:
             Examples:
               python modal_newbie_train.py train --config configs/example_lokr.toml --dataset D:\\datasets\\my-style --job my-style
               python modal_newbie_train.py train --config configs/example_lora.toml --job resume-my-style --no-upload
+              python modal_newbie_train.py model-download-hf --repo NewBie-AI/NewBie-image-Exp0.1
               python modal_newbie_train.py volume-list /jobs
             """
         ),
@@ -375,6 +510,13 @@ def parse_args() -> argparse.Namespace:
     volume_rm.add_argument("path")
     volume_rm.add_argument("--volume", default=DEFAULT_VOLUME)
     volume_rm.add_argument("--yes", action="store_true")
+
+    model_download = sub.add_parser("model-download-hf", help="Download a Hugging Face model snapshot into /workspace/Models.")
+    model_download.add_argument("--repo", default=DEFAULT_HF_REPO, help="Hugging Face repo ID or https://huggingface.co/owner/name URL.")
+    model_download.add_argument("--revision", default=None)
+    model_download.add_argument("--volume", default=DEFAULT_VOLUME)
+    model_download.add_argument("--timeout-minutes", type=int, default=360)
+    model_download.add_argument("--hf-secret", default=DEFAULT_HF_SECRET, help="Modal Secret name containing an HF_TOKEN key.")
 
     return parser.parse_args()
 
@@ -412,7 +554,12 @@ def main() -> None:
             raise SystemExit("Refusing to delete without --yes.")
         remove_volume_path(args.volume, args.path)
         print(f"Removed {args.path} from {args.volume}")
+        return
 
+    if args.command == "model-download-hf":
+        result = download_hf_model_to_volume(args.repo, args.revision, args.volume, args.timeout_minutes, args.hf_secret)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        raise SystemExit(0 if result.get("ok") else 1)
 
 if __name__ == "__main__":
     main()
