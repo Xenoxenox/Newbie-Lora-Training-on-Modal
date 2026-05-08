@@ -417,6 +417,9 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
                 trainer_py.write_text(trainer_text, encoding="utf-8")
 
             requirements = repo_dir / "NewbieLoraTrainer" / "requirements.txt"
+            requirements_text = requirements.read_text(encoding="utf-8")
+            requirements_text = requirements_text.replace("transformers>=4.38.0", "transformers>=4.38.0,<5")
+            requirements.write_text(requirements_text, encoding="utf-8")
             if remote_payload["install_requirements"]:
                 run([sys.executable, "-m", "pip", "install", "-U", "-r", str(requirements)])
 
