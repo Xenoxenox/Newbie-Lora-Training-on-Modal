@@ -98,12 +98,10 @@ def build_image(modal: Any) -> Any:
             "nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04",
             add_python=LOCAL_PYTHON_VERSION,
         )
-        .apt_install("git", "ffmpeg", "libgl1", "libglib2.0-0", "ninja-build")
+        .apt_install("git", "ffmpeg", "libgl1", "libglib2.0-0")
         .run_commands(
             "python -m pip install --upgrade pip",
             "pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124",
-            "pip install packaging ninja wheel psutil",
-            "pip install flash-attn --no-build-isolation",
             "pip install modal toml huggingface-hub",
         )
         .env(
@@ -323,6 +321,28 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
                 if repo_dir.exists():
                     shutil.rmtree(repo_dir)
                 run(["git", "clone", "--depth", "1", "--branch", remote_payload["trainer_ref"], remote_payload["repo_url"], str(repo_dir)])
+
+            model_py = repo_dir / "NewbieLoraTrainer" / "models" / "model.py"
+            model_text = model_py.read_text(encoding="utf-8")
+            old_import = (
+                "from flash_attn import flash_attn_varlen_func\n"
+                "from flash_attn.bert_padding import index_first_axis, pad_input, unpad_input  # noqa\n"
+            )
+            new_import = (
+                "try:\n"
+                "    from flash_attn import flash_attn_varlen_func\n"
+                "    from flash_attn.bert_padding import index_first_axis, pad_input, unpad_input  # noqa\n"
+                "except Exception as exc:\n"
+                "    print(f\"flash_attn unavailable, falling back to native PyTorch attention: {exc}\")\n"
+                "    flash_attn_varlen_func = None\n"
+                "    index_first_axis = pad_input = unpad_input = None\n"
+            )
+            old_condition = "if dtype in [torch.float16, torch.bfloat16] and attn_bias is None:"
+            new_condition = "if flash_attn_varlen_func is not None and dtype in [torch.float16, torch.bfloat16] and attn_bias is None:"
+            if old_import in model_text:
+                model_text = model_text.replace(old_import, new_import)
+            model_text = model_text.replace(old_condition, new_condition, 1)
+            model_py.write_text(model_text, encoding="utf-8")
 
             requirements = repo_dir / "NewbieLoraTrainer" / "requirements.txt"
             if remote_payload["install_requirements"]:
