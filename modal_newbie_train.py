@@ -379,6 +379,43 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
             model_text = model_text.replace(old_condition, new_condition, 1)
             model_py.write_text(model_text, encoding="utf-8")
 
+            for trainer_name in ("train_newbie_lora.py", "train_newbie_lora_xcn.py"):
+                trainer_py = repo_dir / "NewbieLoraTrainer" / trainer_name
+                trainer_text = trainer_py.read_text(encoding="utf-8")
+                dtype_block = (
+                    "    if mixed_precision == 'bf16':\n"
+                    "        model_dtype = torch.bfloat16\n"
+                    "    elif mixed_precision == 'fp16':\n"
+                    "        model_dtype = torch.float16\n"
+                    "    else:\n"
+                    "        model_dtype = torch.float32\n"
+                )
+                patched_dtype_block = (
+                    "    if mixed_precision == 'bf16':\n"
+                    "        model_dtype = torch.bfloat16\n"
+                    "        clip_torch_dtype = \"bfloat16\"\n"
+                    "    elif mixed_precision == 'fp16':\n"
+                    "        model_dtype = torch.float16\n"
+                    "        clip_torch_dtype = \"float16\"\n"
+                    "    else:\n"
+                    "        model_dtype = torch.float32\n"
+                    "        clip_torch_dtype = \"float32\"\n"
+                )
+                if dtype_block not in trainer_text:
+                    raise RuntimeError(f"Unable to patch dtype block in {trainer_py}")
+                trainer_text = trainer_text.replace(dtype_block, patched_dtype_block)
+                clip_replacements = {
+                    "clip_model = AutoModel.from_pretrained(clip_model_path, torch_dtype=model_dtype, trust_remote_code=True)":
+                        "clip_model = AutoModel.from_pretrained(clip_model_path, torch_dtype=clip_torch_dtype, trust_remote_code=True)",
+                    "clip_model = AutoModel.from_pretrained(clip_path, torch_dtype=model_dtype, trust_remote_code=True)":
+                        "clip_model = AutoModel.from_pretrained(clip_path, torch_dtype=clip_torch_dtype, trust_remote_code=True)",
+                }
+                for old_call, new_call in clip_replacements.items():
+                    if old_call not in trainer_text:
+                        raise RuntimeError(f"Unable to patch CLIP dtype call in {trainer_py}")
+                    trainer_text = trainer_text.replace(old_call, new_call)
+                trainer_py.write_text(trainer_text, encoding="utf-8")
+
             requirements = repo_dir / "NewbieLoraTrainer" / "requirements.txt"
             if remote_payload["install_requirements"]:
                 run([sys.executable, "-m", "pip", "install", "-U", "-r", str(requirements)])
