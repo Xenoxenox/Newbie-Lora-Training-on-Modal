@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import sys
+import tempfile
 import textwrap
 from typing import Any
 
@@ -91,6 +92,29 @@ def _load_modal():
     return modal
 
 
+def _load_toml_module():
+    import toml  # type: ignore
+
+    return toml
+
+
+def build_job_config(job: TrainJob) -> str:
+    toml = _load_toml_module()
+    config_path = job.config_path.resolve()
+    config = toml.load(str(config_path))
+    model_config = config.setdefault("Model", {})
+    model_config["train_data_dir"] = job.remote_dataset
+    model_config["output_dir"] = job.remote_output
+    return toml.dumps(config)
+
+
+def dataset_upload_target(job: TrainJob, dataset_path: Path) -> str:
+    # Preserve kohya-style repeat folders when the user selects one directly.
+    if re.match(r"^\d+_.+", dataset_path.name):
+        return f"{job.volume_dataset}/{dataset_path.name}"
+    return job.volume_dataset
+
+
 def build_image(modal: Any) -> Any:
     # Build the remote runtime image lazily so local help/list commands stay lightweight.
     return (
@@ -142,10 +166,21 @@ def upload_job_inputs(job: TrainJob) -> None:
     if dataset_path and not dataset_path.is_dir():
         raise FileNotFoundError(f"Dataset directory not found: {dataset_path}")
 
-    with volume.batch_upload(force=True) as batch:
-        batch.put_file(str(config_path), job.volume_config)
-        if dataset_path:
-            batch.put_directory(str(dataset_path), job.volume_dataset)
+    config_text = build_job_config(job)
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_config = Path(temp_dir) / "config.toml"
+        temp_config.write_text(config_text, encoding="utf-8")
+
+        for path in (job.volume_config, job.volume_dataset):
+            try:
+                volume.remove_file(path, recursive=True)
+            except Exception:
+                pass
+
+        with volume.batch_upload(force=True) as batch:
+            batch.put_file(str(temp_config), job.volume_config)
+            if dataset_path:
+                batch.put_directory(str(dataset_path), dataset_upload_target(job, dataset_path))
 
     print(f"Uploaded config to volume:{job.volume_config} -> {job.remote_config}")
     if dataset_path:
