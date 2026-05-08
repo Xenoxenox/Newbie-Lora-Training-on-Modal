@@ -102,7 +102,7 @@ def build_image(modal: Any) -> Any:
         .run_commands(
             "python -m pip install --upgrade pip",
             "pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124",
-            "pip install packaging ninja wheel",
+            "pip install packaging ninja wheel psutil",
             "pip install flash-attn --no-build-isolation",
             "pip install modal toml huggingface-hub",
         )
