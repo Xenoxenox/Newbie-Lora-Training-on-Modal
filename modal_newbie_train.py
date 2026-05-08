@@ -7,6 +7,7 @@ import datetime as dt
 import json
 import os
 from pathlib import Path
+from pathlib import PurePosixPath
 import re
 import sys
 import tempfile
@@ -543,6 +544,70 @@ def remove_volume_path(volume_name: str, path: str, recursive: bool = True) -> N
     volume.commit()
 
 
+def _is_volume_dir(item: Any) -> bool:
+    return str(item.type) == "2" or str(item.type).lower().endswith("directory")
+
+
+def download_volume_path(volume_name: str, remote_path: str, local_path: Path) -> int:
+    modal = _load_modal()
+    volume = modal.Volume.from_name(volume_name, create_if_missing=True)
+    remote_path = "/" + remote_path.strip("/")
+
+    def download_file(source: str, target: Path) -> int:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("wb") as file:
+            return volume.read_file_into_fileobj(source, file)
+
+    try:
+        entries = volume.listdir(remote_path)
+    except modal.exception.NotFoundError:
+        return download_file(remote_path, local_path)
+
+    local_path.mkdir(parents=True, exist_ok=True)
+    base_path = PurePosixPath(remote_path.strip("/"))
+    bytes_written = 0
+    for item in entries:
+        item_path = PurePosixPath(str(item.path).strip("/"))
+        relative_path = Path(item_path.relative_to(base_path).as_posix())
+        target_path = local_path / relative_path
+        if _is_volume_dir(item):
+            bytes_written += download_volume_path(volume_name, "/" + item_path.as_posix(), target_path)
+        else:
+            bytes_written += download_file("/" + item_path.as_posix(), target_path)
+    return bytes_written
+
+
+def get_config_output_name(config_path: Path) -> str:
+    toml = _load_toml_module()
+    config = toml.load(str(config_path.resolve()))
+    output_name = str(config.get("Model", {}).get("output_name", "")).strip()
+    if not output_name:
+        raise ValueError(f"Config is missing Model.output_name: {config_path}")
+    return output_name
+
+
+def download_job_output(
+    volume_name: str,
+    job_name: str,
+    config_path: Path,
+    local_path: Path | None = None,
+    output_name: str | None = None,
+) -> dict[str, Any]:
+    job_slug = safe_slug(job_name)
+    resolved_output_name = output_name.strip() if output_name else get_config_output_name(config_path)
+    if not resolved_output_name:
+        raise ValueError("Output name cannot be blank.")
+
+    remote_path = f"/jobs/{job_slug}/output/{resolved_output_name}"
+    target_path = local_path or Path("outputs") / job_slug / resolved_output_name
+    bytes_written = download_volume_path(volume_name, remote_path, target_path)
+    return {
+        "remote_path": remote_path,
+        "local_path": str(target_path),
+        "bytes": bytes_written,
+    }
+
+
 def list_all_volumes() -> list[dict[str, str]]:
     """List all Modal volumes in the active environment."""
     modal = _load_modal()
@@ -580,6 +645,8 @@ def parse_args() -> argparse.Namespace:
               python modal_newbie_train.py train --config configs/example_lora.toml --job resume-my-style --no-upload
               python modal_newbie_train.py model-download-hf --repo NewBie-AI/NewBie-image-Exp0.1
               python modal_newbie_train.py volume-list /jobs
+              python modal_newbie_train.py volume-download /jobs/<job>/output/<output-name> outputs/<job>/<output-name>
+              python modal_newbie_train.py job-download --job my-style --config configs/example_lora.toml
             """
         ),
     )
@@ -607,6 +674,18 @@ def parse_args() -> argparse.Namespace:
     volume_rm.add_argument("path")
     volume_rm.add_argument("--volume", default=DEFAULT_VOLUME)
     volume_rm.add_argument("--yes", action="store_true")
+
+    volume_download = sub.add_parser("volume-download", help="Download a file or directory from the Modal Volume.")
+    volume_download.add_argument("remote_path")
+    volume_download.add_argument("local_path", type=Path)
+    volume_download.add_argument("--volume", default=DEFAULT_VOLUME)
+
+    job_download = sub.add_parser("job-download", help="Download the final adapter output for a training job.")
+    job_download.add_argument("--job", required=True, help="Modal job name used for training.")
+    job_download.add_argument("--config", required=True, type=Path, help="Training TOML used to get Model.output_name.")
+    job_download.add_argument("--output-name", default=None, help="Override Model.output_name from the config.")
+    job_download.add_argument("--local-path", type=Path, default=None, help="Local destination directory.")
+    job_download.add_argument("--volume", default=DEFAULT_VOLUME)
 
     model_download = sub.add_parser("model-download-hf", help="Download a Hugging Face model snapshot into /workspace/Models.")
     model_download.add_argument("--repo", default=DEFAULT_HF_REPO, help="Hugging Face repo ID or https://huggingface.co/owner/name URL.")
@@ -651,6 +730,16 @@ def main() -> None:
             raise SystemExit("Refusing to delete without --yes.")
         remove_volume_path(args.volume, args.path)
         print(f"Removed {args.path} from {args.volume}")
+        return
+
+    if args.command == "volume-download":
+        bytes_written = download_volume_path(args.volume, args.remote_path, args.local_path)
+        print(f"Downloaded {args.remote_path} from {args.volume} to {args.local_path} ({bytes_written} bytes)")
+        return
+
+    if args.command == "job-download":
+        result = download_job_output(args.volume, args.job, args.config, args.local_path, args.output_name)
+        print(f"Downloaded {result['remote_path']} from {args.volume} to {result['local_path']} ({result['bytes']} bytes)")
         return
 
     if args.command == "model-download-hf":
