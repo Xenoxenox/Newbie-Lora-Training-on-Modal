@@ -10,3 +10,6 @@ logs/
 *.zip
 configs/jobs/*
 !configs/jobs/.gitkeep
+dataset/
+!dataset/.gitkeep
+dataset_1536/
