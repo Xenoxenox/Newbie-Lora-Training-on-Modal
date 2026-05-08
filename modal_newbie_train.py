@@ -98,10 +98,12 @@ def build_image(modal: Any) -> Any:
             "nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04",
             add_python=LOCAL_PYTHON_VERSION,
         )
-        .apt_install("git", "ffmpeg", "libgl1", "libglib2.0-0")
+        .apt_install("git", "ffmpeg", "libgl1", "libglib2.0-0", "ninja-build")
         .run_commands(
             "python -m pip install --upgrade pip",
             "pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124",
+            "pip install packaging ninja",
+            "pip install flash-attn --no-build-isolation",
             "pip install modal toml huggingface-hub",
         )
         .env(
