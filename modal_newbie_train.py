@@ -555,8 +555,11 @@ def download_volume_path(volume_name: str, remote_path: str, local_path: Path) -
 
     def download_file(source: str, target: Path) -> int:
         target.parent.mkdir(parents=True, exist_ok=True)
-        with target.open("wb") as file:
-            return volume.read_file_into_fileobj(source, file)
+        try:
+            with target.open("wb") as file:
+                return volume.read_file_into_fileobj(source, file)
+        except modal.exception.NotFoundError as exc:
+            raise FileNotFoundError(f"Volume path not found: {source}") from exc
 
     try:
         entries = volume.listdir(remote_path)

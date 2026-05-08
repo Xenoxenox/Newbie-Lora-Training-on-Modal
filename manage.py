@@ -13,6 +13,7 @@ from modal_newbie_train import (
     DEFAULT_VOLUME,
     TrainJob,
     delete_volume,
+    download_job_output,
     download_hf_model_to_volume,
     get_volume_dashboard_url,
     list_all_volumes,
@@ -263,6 +264,32 @@ def load_model_flow() -> None:
         print(f"Error: {result['error']}")
 
 
+def download_job_output_flow() -> None:
+    # Download the final adapter folder inferred from the job name and config.
+    config = choose_config()
+    job_name = ask_text("Modal job name", config.stem)
+    output_name = ask_text("Remote output folder override (blank to use config Model.output_name)", "")
+    local_path = ask_text("Local destination (blank for outputs/<job>/<output>)", "")
+
+    try:
+        result = download_job_output(
+            DEFAULT_VOLUME,
+            job_name,
+            config,
+            Path(local_path) if local_path else None,
+            output_name or None,
+        )
+    except FileNotFoundError as exc:
+        print(f"\nDownload failed: {exc}")
+        print("Leave the override blank to use Model.output_name from the selected config.")
+        return
+
+    print("\nJob output downloaded.")
+    print(f"Remote path: {result['remote_path']}")
+    print(f"Local path: {result['local_path']}")
+    print(f"Bytes: {result['bytes']}")
+
+
 def main() -> None:
     print(
         textwrap.dedent(
@@ -278,6 +305,7 @@ def main() -> None:
             "Action",
             [
                 "Run training",
+                "Download job output",
                 "Load model to Volume",
                 "Create config",
                 "Volume management",
@@ -286,6 +314,8 @@ def main() -> None:
         )
         if action == "Run training":
             run_training_flow()
+        elif action == "Download job output":
+            download_job_output_flow()
         elif action == "Load model to Volume":
             load_model_flow()
         elif action == "Create config":
