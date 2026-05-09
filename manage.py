@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 import datetime as dt
 from pathlib import Path
 import textwrap
+from typing import Any
 
 import questionary
-from questionary import Style
+from questionary import Choice, Style
 
 from modal_newbie_train import (
     DEFAULT_HF_REPO,
@@ -42,26 +44,156 @@ STYLE = Style(
 CONFIG_DIR = Path("configs")
 JOB_CONFIG_DIR = CONFIG_DIR / "jobs"
 
+Validator = Callable[[str], bool | str]
 
-def ask_text(message: str, default: str = "") -> str:
-    answer = questionary.text(message, default=default, style=STYLE).ask()
+
+def ask_text(
+    message: str,
+    default: str = "",
+    *,
+    validate: Validator | None = None,
+    instruction: str | None = None,
+) -> str:
+    answer = questionary.text(
+        message,
+        default=default,
+        validate=validate,
+        instruction=instruction,
+        style=STYLE,
+    ).ask()
     if answer is None:
         raise KeyboardInterrupt
     return answer.strip()
 
 
-def ask_confirm(message: str, default: bool = False) -> bool:
-    answer = questionary.confirm(message, default=default, style=STYLE).ask()
+def ask_confirm(message: str, default: bool = False, *, instruction: str | None = None) -> bool:
+    answer = questionary.confirm(message, default=default, instruction=instruction, style=STYLE).ask()
     if answer is None:
         raise KeyboardInterrupt
     return bool(answer)
 
 
-def ask_select(message: str, choices: list[str], default: str | None = None) -> str:
-    answer = questionary.select(message, choices=choices, default=default, style=STYLE).ask()
+def ask_select(
+    message: str,
+    choices: Sequence[str | Choice],
+    default: str | Choice | None = None,
+    *,
+    instruction: str | None = None,
+) -> Any:
+    answer = questionary.select(
+        message,
+        choices=choices,
+        default=default,
+        instruction=instruction,
+        show_description=True,
+        style=STYLE,
+    ).ask()
     if answer is None:
         raise KeyboardInterrupt
-    return str(answer)
+    return answer
+
+
+def validate_required(label: str) -> Validator:
+    def _validate(value: str) -> bool | str:
+        if value.strip():
+            return True
+        return f"Enter a {label}."
+
+    return _validate
+
+
+def validate_positive_int(label: str, *, minimum: int = 1) -> Validator:
+    def _validate(value: str) -> bool | str:
+        try:
+            parsed = int(value.strip())
+        except ValueError:
+            return f"{label} must be a whole number."
+        if parsed < minimum:
+            return f"{label} must be at least {minimum}."
+        return True
+
+    return _validate
+
+
+def validate_positive_float(label: str) -> Validator:
+    def _validate(value: str) -> bool | str:
+        try:
+            parsed = float(value.strip())
+        except ValueError:
+            return f"{label} must be a number, such as 1e-4."
+        if parsed <= 0:
+            return f"{label} must be greater than 0."
+        return True
+
+    return _validate
+
+
+def validate_existing_dir(label: str) -> Validator:
+    def _validate(value: str) -> bool | str:
+        text = clean_path_input(value)
+        if not text:
+            return f"Enter a {label}."
+        if not Path(text).expanduser().is_dir():
+            return f"{label.capitalize()} not found: {text}"
+        return True
+
+    return _validate
+
+
+def validate_volume_name(value: str) -> bool | str:
+    text = value.strip()
+    if not text:
+        return "Enter a Modal Volume name."
+    if "/" in text or "\\" in text:
+        return "Volume names cannot contain path separators."
+    return True
+
+
+def ask_positive_int(message: str, default: str, label: str, *, minimum: int = 1) -> int:
+    return int(ask_text(message, default, validate=validate_positive_int(label, minimum=minimum)))
+
+
+def ask_positive_float_text(message: str, default: str, label: str) -> str:
+    return ask_text(message, default, validate=validate_positive_float(label))
+
+
+def clean_path_input(value: str) -> str:
+    return value.strip().strip("\"'")
+
+
+def ask_sanitized_name(message: str, default: str, noun: str) -> str:
+    while True:
+        raw_name = ask_text(
+            message,
+            default,
+            validate=validate_required(noun),
+            instruction="Letters, numbers, dots, underscores, and hyphens are used as-is. Other characters are converted to hyphens.",
+        )
+        slug = safe_slug(raw_name)
+        if raw_name == slug:
+            return slug
+        if ask_confirm(
+            f"Use '{slug}' as the {noun} slug?",
+            True,
+            instruction=f"Your input will be stored as '{slug}' for Modal paths, config files, and local folders.",
+        ):
+            return slug
+
+
+def ask_dataset_directory() -> Path:
+    dataset = ask_text(
+        "Local dataset directory",
+        "",
+        validate=validate_existing_dir("dataset directory"),
+        instruction="Select the folder that contains the images and captions to upload for this job.",
+    )
+    return Path(clean_path_input(dataset)).expanduser()
+
+
+def config_description(path: Path) -> str:
+    if path.parent == JOB_CONFIG_DIR:
+        return "Generated job config."
+    return "Example or hand-written config."
 
 
 def render_lora_config(
@@ -140,16 +272,37 @@ def create_config_flow() -> Path:
     # Generated configs are kept separate from hand-written examples.
     JOB_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     default_name = dt.datetime.now().strftime("newbie-%Y%m%d-%H%M")
-    job_name = ask_text("Job name", default_name)
-    job_slug = safe_slug(job_name)
-    adapter = ask_select("Adapter type", ["LoKr", "LoRA"], "LoKr")
-    output_name = ask_text("Output model name", job_slug)
-    resolution = int(ask_select("Resolution", ["1024", "768", "1536"], "1024"))
-    epochs = int(ask_text("Epochs", "24" if adapter == "LoKr" else "50"))
-    batch_size = int(ask_text("Batch size", "1"))
-    learning_rate = ask_text("Learning rate", "1e-4")
+    while True:
+        job_slug = ask_sanitized_name("Config/job name", default_name, "config name")
+        config_path = JOB_CONFIG_DIR / f"{job_slug}.toml"
+        if not config_path.exists() or ask_confirm(
+            f"Replace existing config '{config_path}'?",
+            False,
+            instruction="Choose No to enter a different config name.",
+        ):
+            break
+    adapter = ask_select(
+        "Adapter type",
+        [
+            Choice("LoKr", value="LoKr", checked=True, description="Recommended default for Newbie-image training quality."),
+            Choice("LoRA", value="LoRA", description="Smaller adapter for quicker, lower-memory experiments."),
+        ],
+    )
+    output_name = ask_sanitized_name("Output model name", job_slug, "output model name")
+    resolution = int(
+        ask_select(
+            "Training resolution",
+            [
+                Choice("1024", value="1024", checked=True, description="Balanced default."),
+                Choice("768", value="768", description="Lower memory and faster iterations."),
+                Choice("1536", value="1536", description="Higher detail with higher GPU cost."),
+            ],
+        )
+    )
+    epochs = ask_positive_int("Epochs", "24" if adapter == "LoKr" else "50", "Epochs")
+    batch_size = ask_positive_int("Batch size", "1", "Batch size")
+    learning_rate = ask_positive_float_text("Learning rate", "1e-4", "Learning rate")
 
-    config_path = JOB_CONFIG_DIR / f"{job_slug}.toml"
     config_path.write_text(
         render_lora_config(job_slug, output_name, adapter, resolution, epochs, batch_size, learning_rate),
         encoding="utf-8",
@@ -163,32 +316,65 @@ def choose_config() -> Path:
     choices = sorted([p for p in CONFIG_DIR.rglob("*.toml") if p.is_file()])
     if not choices:
         return create_config_flow()
-    labels = [str(p) for p in choices] + ["Create a new config"]
+
+    create_new = "__create_config__"
+    labels: list[Choice] = [
+        Choice(str(path), value=path, description=config_description(path))
+        for path in choices
+    ]
+    labels.append(
+        Choice(
+            "Create a new config",
+            value=create_new,
+            description="Build a fresh LoRA/LoKr job config through guided prompts.",
+        )
+    )
     selected = ask_select("Training config", labels)
-    if selected == "Create a new config":
+    if selected == create_new:
         return create_config_flow()
-    return Path(selected)
+    return selected
 
 
 def run_training_flow() -> None:
     # This flow collects local choices and delegates all Modal work to the headless runner.
     config = choose_config()
-    job_name = ask_text("Modal job name", config.stem)
-    dataset = ask_text("Local dataset directory (blank to reuse uploaded Volume dataset)", "")
-    gpu = ask_select("GPU", ["L40S", "A100-40GB", "A100-80GB", "H100", "T4"], "L40S")
-    timeout = int(ask_text("Timeout minutes", "360"))
-    install = ask_confirm("Install trainer requirements in the remote container?", True)
-    upload = ask_confirm("Upload config and dataset before running?", True)
-    detach = ask_confirm("Detached mode (continue after local disconnect)?", False)
+    job_name = ask_sanitized_name("Modal job name", config.stem, "job name")
+    first_upload = ask_confirm(
+        "Is this dataset being uploaded for this job for the first time?",
+        True,
+        instruction="Choose No only when both config and dataset are already in the Modal Volume for this job.",
+    )
+    dataset_path = ask_dataset_directory() if first_upload else None
+    gpu = ask_select(
+        "GPU",
+        [
+            Choice("L40S", value="L40S", checked=True, description="Recommended default for cost and speed."),
+            Choice("A100-40GB", value="A100-40GB", description="More memory for heavier runs."),
+            Choice("A100-80GB", value="A100-80GB", description="Large-memory A100 option."),
+            Choice("H100", value="H100", description="Fastest option with higher cost."),
+            Choice("T4", value="T4", description="Lower-cost option for small tests."),
+        ],
+    )
+    timeout = ask_positive_int("Timeout minutes", "360", "Timeout minutes")
+    install = ask_confirm(
+        "Set up or update trainer dependencies before training?",
+        True,
+        instruction="Choose Yes for first runs or after trainer updates. Choose No only when the remote environment is already prepared.",
+    )
+    detach = ask_confirm(
+        "Keep training running if this local terminal disconnects?",
+        False,
+        instruction="Detached mode submits the job and returns control locally while Modal continues running.",
+    )
 
     job = TrainJob(
         name=job_name,
         config_path=config,
-        dataset_path=Path(dataset) if dataset else None,
+        dataset_path=dataset_path,
         gpu=gpu,
         timeout_minutes=timeout,
         install_requirements=install,
-        upload=upload,
+        upload=first_upload,
         detach=detach,
     )
     result = run_remote_training(job)
@@ -218,11 +404,17 @@ def volume_management_flow() -> None:
     while True:
         action = ask_select(
             "Volume management",
-            ["List", "Delete", "Rename", "Dashboard", "Back"],
+            [
+                Choice("List volumes", value="list", description="Show available Modal Volumes in this account."),
+                Choice("Delete a volume", value="delete", description="Permanently remove a Volume and all data inside it."),
+                Choice("Rename a volume", value="rename", description="Change a Volume name without downloading its contents."),
+                Choice("Open dashboard", value="dashboard", description="Open the selected Volume in the Modal dashboard."),
+                Choice("Back", value="back", description="Return to the main menu."),
+            ],
         )
-        if action == "Back":
+        if action == "back":
             return
-        elif action == "List":
+        elif action == "list":
             volumes = list_all_volumes()
             if not volumes:
                 print("\nNo volumes found.")
@@ -230,22 +422,23 @@ def volume_management_flow() -> None:
                 print()
                 for v in volumes:
                     print(f"  {v['name']:40s} {v['id']}")
-        elif action == "Delete":
-            name = ask_text("Volume name to delete", DEFAULT_VOLUME)
-            if not ask_confirm(f"Delete volume '{name}' and ALL of its data?", False):
+        elif action == "delete":
+            name = ask_text("Volume name to delete", DEFAULT_VOLUME, validate=validate_volume_name)
+            if not ask_confirm(
+                f"Delete volume '{name}' and all of its data?",
+                False,
+                instruction="This cannot be undone from the TUI.",
+            ):
                 continue
             delete_volume(name)
             print(f"Deleted volume '{name}'")
-        elif action == "Rename":
-            old_name = ask_text("Current volume name", DEFAULT_VOLUME)
-            new_name = ask_text("New volume name", "")
-            if not new_name:
-                print("No new name provided.")
-                continue
+        elif action == "rename":
+            old_name = ask_text("Current volume name", DEFAULT_VOLUME, validate=validate_volume_name)
+            new_name = ask_text("New volume name", "", validate=validate_volume_name)
             rename_volume(old_name, new_name)
-            print(f"Renamed '{old_name}' → '{new_name}'")
-        elif action == "Dashboard":
-            name = ask_text("Volume name", DEFAULT_VOLUME)
+            print(f"Renamed '{old_name}' -> '{new_name}'")
+        elif action == "dashboard":
+            name = ask_text("Volume name", DEFAULT_VOLUME, validate=validate_volume_name)
             url = get_volume_dashboard_url(name)
             import webbrowser
             webbrowser.open(url)
@@ -255,13 +448,19 @@ def volume_management_flow() -> None:
 
 def load_model_flow() -> None:
     # Newbie training configs expect the base model to live at /workspace/Models.
-    repo = ask_text("HF repo or URL", DEFAULT_HF_REPO)
-    if not repo:
-        print("No repo provided.")
-        return
-    revision = ask_text("Revision (blank for default)", "")
-    timeout = int(ask_text("Timeout minutes", "360"))
-    hf_secret = ask_text("Modal Secret name for HF_TOKEN", DEFAULT_HF_SECRET)
+    repo = ask_text(
+        "Hugging Face repo or URL",
+        DEFAULT_HF_REPO,
+        validate=validate_required("Hugging Face repo or URL"),
+        instruction="Use owner/name or a huggingface.co model URL.",
+    )
+    revision = ask_text("Revision", "", instruction="Leave blank to use the repository default branch.")
+    timeout = ask_positive_int("Timeout minutes", "360", "Timeout minutes")
+    hf_secret = ask_text(
+        "Modal Secret name for HF_TOKEN",
+        DEFAULT_HF_SECRET,
+        validate=validate_required("Modal Secret name"),
+    )
     result = download_hf_model_to_volume(repo, revision or None, DEFAULT_VOLUME, timeout, hf_secret)
 
     print("\nModel load finished.")
@@ -278,9 +477,17 @@ def load_model_flow() -> None:
 def download_job_output_flow() -> None:
     # Download the final adapter folder inferred from the job name and config.
     config = choose_config()
-    job_name = ask_text("Modal job name", config.stem)
-    output_name = ask_text("Remote output folder override (blank to use config Model.output_name)", "")
-    local_path = ask_text("Local destination (blank for outputs/<job>/<output>)", "")
+    job_name = ask_sanitized_name("Modal job name used for training", config.stem, "job name")
+    output_name = ask_text(
+        "Remote output folder override",
+        "",
+        instruction="Leave blank to use Model.output_name from the selected config.",
+    )
+    local_path = ask_text(
+        "Local destination",
+        "",
+        instruction="Leave blank to use outputs/<job>/<output>.",
+    )
 
     try:
         result = download_job_output(
@@ -313,25 +520,25 @@ def main() -> None:
     while True:
         # Re-enter the menu after each action so operators can inspect outputs or clean up.
         action = ask_select(
-            "Action",
+            "What do you want to do?",
             [
-                "Run training",
-                "Download job output",
-                "Load model to Volume",
-                "Create config",
-                "Volume management",
-                "Quit",
+                Choice("Run training", value="run_training", description="Upload or reuse inputs and start a Modal training job."),
+                Choice("Download job output", value="download_output", description="Fetch a completed adapter folder from the Modal Volume."),
+                Choice("Load model to Volume", value="load_model", description="Download the base model snapshot into /workspace/Models."),
+                Choice("Create config", value="create_config", description="Generate a LoRA or LoKr TOML config for a new job."),
+                Choice("Manage Volumes", value="volume_management", description="List, rename, delete, or open Modal Volumes."),
+                Choice("Quit", value="quit", description="Exit without changing anything else."),
             ],
         )
-        if action == "Run training":
+        if action == "run_training":
             run_training_flow()
-        elif action == "Download job output":
+        elif action == "download_output":
             download_job_output_flow()
-        elif action == "Load model to Volume":
+        elif action == "load_model":
             load_model_flow()
-        elif action == "Create config":
+        elif action == "create_config":
             create_config_flow()
-        elif action == "Volume management":
+        elif action == "volume_management":
             volume_management_flow()
         else:
             return

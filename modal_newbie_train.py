@@ -269,9 +269,9 @@ def download_hf_model_to_volume(
         return result
 
     print(
-        "\n正在创建 Volume 并下载模型，可能需要较长时间。\n"
-        "跟踪进度：modal app list && modal app logs <app-id> -f\n"
-        "或登录 https://modal.com/apps 查看。\n"
+        "\nCreating the Modal Volume and downloading the model. This can take a while.\n"
+        "Track progress with: modal app list && modal app logs <app-id> -f\n"
+        "You can also check https://modal.com/apps.\n"
     )
     with app.run():
         return modal_download_model.remote(payload)
@@ -525,17 +525,17 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
 
     if job.detach:
         print(
-            "\n正在以 detached 模式提交远程训练。\n"
-            "本地进程退出后 Modal App 会继续运行。\n"
-            "跟踪进度：modal app list && modal app logs <app-id> -f\n"
-            "或登录 https://modal.com/apps 查看。\n"
+            "\nSubmitting remote training in detached mode.\n"
+            "The Modal app will keep running after the local process exits.\n"
+            "Track progress with: modal app list && modal app logs <app-id> -f\n"
+            "You can also check https://modal.com/apps.\n"
         )
     else:
         print(
-            "\n正在启动远程训练，可能需要较长时间。\n"
-            "当前为同步模式，本地进程断开可能会取消本次输入。\n"
-            "跟踪进度：modal app list && modal app logs <app-id> -f\n"
-            "或登录 https://modal.com/apps 查看。\n"
+            "\nStarting remote training. This can take a while.\n"
+            "This is synchronous mode; disconnecting the local process may cancel this run.\n"
+            "Track progress with: modal app list && modal app logs <app-id> -f\n"
+            "You can also check https://modal.com/apps.\n"
         )
 
     with app.run(detach=job.detach):
