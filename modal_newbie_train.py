@@ -580,7 +580,13 @@ def remove_volume_path(volume_name: str, path: str, recursive: bool = True) -> N
     modal = _load_modal()
     volume = modal.Volume.from_name(volume_name, create_if_missing=True)
     volume.remove_file(path, recursive=recursive)
-    volume.commit()
+
+
+def remove_job_directory(volume_name: str, job_name: str) -> dict[str, str]:
+    job_slug = safe_slug(job_name)
+    remote_path = f"/jobs/{job_slug}"
+    remove_volume_path(volume_name, remote_path, recursive=True)
+    return {"volume": volume_name, "job": job_slug, "remote_path": remote_path}
 
 
 def _is_volume_dir(item: Any) -> bool:
