@@ -42,6 +42,7 @@ class TrainJob:
     use_xcn_trainer: bool = False
     install_requirements: bool = True
     upload: bool = True
+    detach: bool = False
     max_return_mb: int = 128
 
     @property
@@ -445,11 +446,28 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
                     bufsize=1,
                 )
                 assert proc.stdout is not None
+                stream_training_output = True
                 for line in proc.stdout:
-                    print(line, end="")
+                    if stream_training_output:
+                        try:
+                            print(line, end="")
+                        except BrokenPipeError:
+                            stream_training_output = False
                     log.write(line)
                     log.flush()
                 return_code = proc.wait()
+                if return_code == 0:
+                    tail_notice = (
+                        "\nTraining process exited successfully. The Modal app will close automatically.\n"
+                        "If a BrokenPipeError appears after 'Training finished', it is harmless stdout shutdown noise.\n"
+                    )
+                    log.write(tail_notice)
+                    log.flush()
+                    if stream_training_output:
+                        try:
+                            print(tail_notice, end="")
+                        except BrokenPipeError:
+                            pass
 
             zip_path = job_dir / "output.zip"
             artifacts = []
@@ -509,13 +527,38 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
         volume.commit()
         return result
 
-    print(
-        "\n正在启动远程训练，可能需要较长时间。\n"
-        "跟踪进度：modal app list && modal app logs <app-id> -f\n"
-        "或登录 https://modal.com/apps 查看。\n"
-    )
-    with app.run():
-        result = modal_train.remote(payload)
+    if job.detach:
+        print(
+            "\n正在以 detached 模式提交远程训练。\n"
+            "本地进程退出后 Modal App 会继续运行。\n"
+            "跟踪进度：modal app list && modal app logs <app-id> -f\n"
+            "或登录 https://modal.com/apps 查看。\n"
+        )
+    else:
+        print(
+            "\n正在启动远程训练，可能需要较长时间。\n"
+            "当前为同步模式，本地进程断开可能会取消本次输入。\n"
+            "跟踪进度：modal app list && modal app logs <app-id> -f\n"
+            "或登录 https://modal.com/apps 查看。\n"
+        )
+
+    with app.run(detach=job.detach):
+        if job.detach:
+            function_call = modal_train.spawn(payload)
+            result = {
+                "ok": True,
+                "submitted": True,
+                "detached": True,
+                "function_call_id": function_call.object_id,
+                "function_call_dashboard_url": function_call.get_dashboard_url(),
+                "app_id": app.app_id,
+                "app_dashboard_url": app.get_dashboard_url(),
+                "job_dir": f"/jobs/{job.slug}",
+                "output_dir": job.remote_output,
+                "log_path": job.remote_log,
+            }
+        else:
+            result = modal_train.remote(payload)
 
     if result.get("returned_zip"):
         out_dir = Path("outputs") / job.slug
@@ -646,6 +689,7 @@ def parse_args() -> argparse.Namespace:
             Examples:
               python modal_newbie_train.py train --config configs/example_lokr.toml --dataset D:\\datasets\\my-style --job my-style
               python modal_newbie_train.py train --config configs/example_lora.toml --job resume-my-style --no-upload
+              python modal_newbie_train.py train --config configs/example_lora.toml --job long-run --no-upload --detach
               python modal_newbie_train.py model-download-hf --repo NewBie-AI/NewBie-image-Exp0.1
               python modal_newbie_train.py volume-list /jobs
               python modal_newbie_train.py volume-download /jobs/<job>/output/<output-name> outputs/<job>/<output-name>
@@ -667,6 +711,7 @@ def parse_args() -> argparse.Namespace:
     train.add_argument("--xcn", action="store_true", help="Use train_newbie_lora_xcn.py.")
     train.add_argument("--no-upload", action="store_true", help="Reuse config/dataset already in the Modal Volume.")
     train.add_argument("--no-install", action="store_true", help="Skip pip install -r NewbieLoraTrainer/requirements.txt.")
+    train.add_argument("--detach", action="store_true", help="Submit training and keep it running after local disconnect.")
     train.add_argument("--max-return-mb", type=int, default=128)
 
     volume_list = sub.add_parser("volume-list", help="List files in the Modal Volume.")
@@ -716,6 +761,7 @@ def main() -> None:
             use_xcn_trainer=args.xcn,
             install_requirements=not args.no_install,
             upload=not args.no_upload,
+            detach=args.detach,
             max_return_mb=args.max_return_mb,
         )
         result = run_remote_training(job)

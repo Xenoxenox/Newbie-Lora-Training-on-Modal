@@ -180,6 +180,7 @@ def run_training_flow() -> None:
     use_xcn = ask_confirm("Use train_newbie_lora_xcn.py?", False)
     install = ask_confirm("Install trainer requirements in the remote container?", True)
     upload = ask_confirm("Upload config and dataset before running?", True)
+    detach = ask_confirm("Detached mode (continue after local disconnect)?", False)
 
     job = TrainJob(
         name=job_name,
@@ -190,8 +191,20 @@ def run_training_flow() -> None:
         use_xcn_trainer=use_xcn,
         install_requirements=install,
         upload=upload,
+        detach=detach,
     )
     result = run_remote_training(job)
+    if result.get("submitted"):
+        print("\nRemote training submitted.")
+        print(f"Detached: {result.get('detached')}")
+        print(f"App ID: {result.get('app_id')}")
+        print(f"Function call ID: {result.get('function_call_id')}")
+        print(f"Dashboard: {result.get('app_dashboard_url')}")
+        print(f"Function call: {result.get('function_call_dashboard_url')}")
+        print(f"Output: {result.get('output_dir')}")
+        print(f"Log: {result.get('log_path')}")
+        return
+
     print("\nRemote training finished.")
     print(f"OK: {result.get('ok')}")
     print(f"Output: {result.get('output_dir')}")

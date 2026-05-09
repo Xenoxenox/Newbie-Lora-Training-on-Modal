@@ -95,6 +95,12 @@ python modal_newbie_train.py train --config configs/example_lokr.toml --dataset 
 python modal_newbie_train.py train --config configs/example_lokr.toml --job my-style --no-upload
 ```
 
+长时间训练可使用 detached 模式，提交后本地断开也不会取消远程训练：
+
+```powershell
+python modal_newbie_train.py train --config configs/example_lora.toml --job my-style --no-upload --detach
+```
+
 ## TUI
 
 ```powershell
@@ -105,7 +111,8 @@ TUI 支持：
 
 - 生成 LoRA/LoKr job TOML。
 - 从 Hugging Face 下载基础模型到 Modal Volume。
-- 上传本地数据集并启动 Modal 训练。
+- 上传本地数据集并启动 Modal 训练，可选择 detached 模式。
+- 下载训练完成后的 adapter 输出目录。
 - Volume 管理：列出、删除、重命名 Volume，打开 Dashboard。
 
 ## 配置要点
