@@ -3,11 +3,14 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 import datetime as dt
 from pathlib import Path
-import textwrap
 from typing import Any
 
 import questionary
 from questionary import Choice, Style
+from rich import box
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
 
 from modal_newbie_train import (
     DEFAULT_HF_REPO,
@@ -28,18 +31,19 @@ from modal_newbie_train import (
 # Keep all TUI prompts on the same questionary theme so the menu reads as one tool.
 STYLE = Style(
     [
-        ("qmark", "fg:#7ee787 bold"),
-        ("question", "fg:#e6edf3 bold"),
+        ("qmark", "fg:#58a6ff bold"),
+        ("question", "fg:#f0f6fc bold"),
         ("answer", "fg:#7ee787 bold"),
-        ("pointer", "fg:#7ee787 bold"),
-        ("highlighted", "fg:#7ee787 bold"),
+        ("pointer", "fg:#f778ba bold"),
+        ("highlighted", "fg:#f778ba bold"),
         ("selected", "fg:#7ee787"),
-        ("separator", "fg:#6e7681"),
-        ("instruction", "fg:#8b949e"),
+        ("separator", "fg:#30363d"),
+        ("instruction", "fg:#8b949e italic"),
         ("text", "fg:#e6edf3"),
     ]
 )
 
+console = Console()
 
 CONFIG_DIR = Path("configs")
 JOB_CONFIG_DIR = CONFIG_DIR / "jobs"
@@ -47,10 +51,46 @@ JOB_CONFIG_DIR = CONFIG_DIR / "jobs"
 Validator = Callable[[str], bool | str]
 
 
+def print_banner() -> None:
+    console.print(
+        Panel.fit(
+            "[bold cyan]Newbie-image[/bold cyan] [magenta]LoRA Modal Manager[/magenta]\n"
+            "[dim]Terminal UI for Modal Training Workflows[/dim]",
+            border_style="blue",
+            padding=(1, 4),
+        )
+    )
+
+
+def print_status(message: str, *, style: str = "green") -> None:
+    console.print(Panel.fit(message, border_style=style, padding=(0, 2)))
+
+
+def print_result_panel(
+    title: str,
+    rows: Sequence[tuple[str, Any]],
+    *,
+    border_style: str = "green",
+) -> None:
+    table = Table(show_header=False, box=None, padding=(0, 2))
+    table.add_column("Key", style="dim", no_wrap=True)
+    table.add_column("Value", style="bold white", overflow="fold")
+    for key, value in rows:
+        if value is None or value == "":
+            continue
+        table.add_row(key, str(value))
+    console.print(Panel(table, title=title, border_style=border_style, box=box.ROUNDED))
+
+
+def print_log_tail(log_tail: str) -> None:
+    if log_tail:
+        console.print(Panel(log_tail.rstrip(), title="Log Tail", border_style="yellow"))
+
+
 def format_instruction(instruction: str | None) -> str | None:
     if not instruction:
-        return "\n\n "
-    return f"\n\n  {instruction}\n\n "
+        return None
+    return f"\n  {instruction}"
 
 
 def format_select_instruction(instruction: str | None) -> str | None:
@@ -64,10 +104,10 @@ def format_text_instruction(instruction: str | None, default: str) -> str | None
     if instruction:
         lines.append(f"  {instruction}")
     if default:
-        lines.append(f"  Press Enter to use: {default}")
+        lines.append(f"  Default: {default}")
     if not lines:
-        return "\n\n "
-    return "\n\n" + "\n".join(lines) + "\n\n "
+        return None
+    return "\n" + "\n".join(lines)
 
 
 def default_aware_validator(validate: Validator | None, default: str) -> Validator | None:
@@ -356,7 +396,7 @@ def create_config_flow() -> Path:
         render_lora_config(job_slug, output_name, adapter, resolution, epochs, batch_size, learning_rate),
         encoding="utf-8",
     )
-    print(f"\nCreated {config_path}")
+    print_status(f"[bold green]Created[/bold green] {config_path}")
     return config_path
 
 
@@ -428,25 +468,33 @@ def run_training_flow() -> None:
     )
     result = run_remote_training(job)
     if result.get("submitted"):
-        print("\nRemote training submitted.")
-        print(f"Detached: {result.get('detached')}")
-        print(f"App ID: {result.get('app_id')}")
-        print(f"Function call ID: {result.get('function_call_id')}")
-        print(f"Dashboard: {result.get('app_dashboard_url')}")
-        print(f"Function call: {result.get('function_call_dashboard_url')}")
-        print(f"Output: {result.get('output_dir')}")
-        print(f"Log: {result.get('log_path')}")
+        print_result_panel(
+            "[bold green]Training Job Submitted[/bold green]",
+            [
+                ("Detached", result.get("detached")),
+                ("App ID", result.get("app_id")),
+                ("Function Call ID", result.get("function_call_id")),
+                ("Dashboard", result.get("app_dashboard_url")),
+                ("Function Call", result.get("function_call_dashboard_url")),
+                ("Output", result.get("output_dir")),
+                ("Log", result.get("log_path")),
+            ],
+        )
         return
 
-    print("\nRemote training finished.")
-    print(f"OK: {result.get('ok')}")
-    print(f"Output: {result.get('output_dir')}")
-    print(f"Log: {result.get('log_path')}")
-    if result.get("local_zip"):
-        print(f"Local zip: {result['local_zip']}")
+    ok = result.get("ok")
+    print_result_panel(
+        "[bold green]Remote Training Finished[/bold green]" if ok else "[bold red]Remote Training Failed[/bold red]",
+        [
+            ("OK", ok),
+            ("Output", result.get("output_dir")),
+            ("Log", result.get("log_path")),
+            ("Local Zip", result.get("local_zip")),
+        ],
+        border_style="green" if ok else "red",
+    )
     if not result.get("ok"):
-        print("\nLog tail:\n")
-        print(result.get("log_tail", ""))
+        print_log_tail(result.get("log_tail", ""))
 
 
 def volume_management_flow() -> None:
@@ -466,11 +514,14 @@ def volume_management_flow() -> None:
         elif action == "list":
             volumes = list_all_volumes()
             if not volumes:
-                print("\nNo volumes found.")
+                print_status("[dim]No volumes found.[/dim]", style="yellow")
             else:
-                print()
+                table = Table(title="Modal Volumes", box=box.SIMPLE_HEAVY, padding=(0, 2))
+                table.add_column("Name", style="bold white")
+                table.add_column("ID", style="dim")
                 for v in volumes:
-                    print(f"  {v['name']:40s} {v['id']}")
+                    table.add_row(str(v["name"]), str(v["id"]))
+                console.print(table)
         elif action == "delete":
             name = ask_text("Volume name to delete", DEFAULT_VOLUME, validate=validate_volume_name)
             if not ask_confirm(
@@ -480,19 +531,22 @@ def volume_management_flow() -> None:
             ):
                 continue
             delete_volume(name)
-            print(f"Deleted volume '{name}'")
+            print_status(f"[bold red]Deleted volume[/bold red] {name}", style="red")
         elif action == "rename":
             old_name = ask_text("Current volume name", DEFAULT_VOLUME, validate=validate_volume_name)
             new_name = ask_text("New volume name", "", validate=validate_volume_name)
             rename_volume(old_name, new_name)
-            print(f"Renamed '{old_name}' -> '{new_name}'")
+            print_result_panel(
+                "[bold green]Volume Renamed[/bold green]",
+                [("Old Name", old_name), ("New Name", new_name)],
+            )
         elif action == "dashboard":
             name = ask_text("Volume name", DEFAULT_VOLUME, validate=validate_volume_name)
             url = get_volume_dashboard_url(name)
             import webbrowser
             webbrowser.open(url)
-            print(f"Opened {url}")
-        print()
+            print_result_panel("[bold green]Dashboard Opened[/bold green]", [("URL", url)])
+        console.print()
 
 
 def load_model_flow() -> None:
@@ -512,15 +566,18 @@ def load_model_flow() -> None:
     )
     result = download_hf_model_to_volume(repo, revision or None, DEFAULT_VOLUME, timeout, hf_secret)
 
-    print("\nModel load finished.")
-    print(f"OK: {result.get('ok')}")
-    print(f"Remote path: {result.get('remote_path')}")
-    if result.get("file_count") is not None:
-        print(f"Files: {result.get('file_count')}")
-    if result.get("bytes") is not None:
-        print(f"Bytes: {result.get('bytes')}")
-    if result.get("error"):
-        print(f"Error: {result['error']}")
+    ok = result.get("ok")
+    print_result_panel(
+        "[bold green]Model Load Finished[/bold green]" if ok else "[bold red]Model Load Failed[/bold red]",
+        [
+            ("OK", ok),
+            ("Remote Path", result.get("remote_path")),
+            ("Files", result.get("file_count")),
+            ("Bytes", result.get("bytes")),
+            ("Error", result.get("error")),
+        ],
+        border_style="green" if ok else "red",
+    )
 
 
 def download_job_output_flow() -> None:
@@ -547,25 +604,27 @@ def download_job_output_flow() -> None:
             output_name or None,
         )
     except FileNotFoundError as exc:
-        print(f"\nDownload failed: {exc}")
-        print("Leave the override blank to use Model.output_name from the selected config.")
+        console.print(
+            Panel(
+                f"{exc}\n\n[dim]Leave the override blank to use Model.output_name from the selected config.[/dim]",
+                title="[bold red]Download Failed[/bold red]",
+                border_style="red",
+            )
+        )
         return
 
-    print("\nJob output downloaded.")
-    print(f"Remote path: {result['remote_path']}")
-    print(f"Local path: {result['local_path']}")
-    print(f"Bytes: {result['bytes']}")
+    print_result_panel(
+        "[bold green]Job Output Downloaded[/bold green]",
+        [
+            ("Remote Path", result["remote_path"]),
+            ("Local Path", result["local_path"]),
+            ("Bytes", result["bytes"]),
+        ],
+    )
 
 
 def main() -> None:
-    print(
-        textwrap.dedent(
-            """
-            Newbie-image LoRA Modal Manager
-            -------------------------------
-            """
-        ).strip()
-    )
+    print_banner()
     while True:
         # Re-enter the menu after each action so operators can inspect outputs or clean up.
         action = ask_select(
@@ -591,7 +650,7 @@ def main() -> None:
             volume_management_flow()
         else:
             return
-        print()
+        console.print()
 
 
 if __name__ == "__main__":
