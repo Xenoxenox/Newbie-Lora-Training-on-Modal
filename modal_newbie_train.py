@@ -41,7 +41,6 @@ class TrainJob:
     trainer_ref: str = "main"
     use_xcn_trainer: bool = False
     install_requirements: bool = True
-    install_flash_attn: bool = False
     upload: bool = True
     detach: bool = False
     max_return_mb: int = 128
@@ -302,7 +301,6 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
         "remote_log": job.remote_log,
         "use_xcn_trainer": job.use_xcn_trainer,
         "install_requirements": job.install_requirements,
-        "install_flash_attn": job.install_flash_attn,
         "max_return_mb": job.max_return_mb,
     }
 
@@ -424,16 +422,6 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
             requirements_text = requirements.read_text(encoding="utf-8")
             requirements_text = requirements_text.replace("transformers>=4.38.0", "transformers>=4.38.0,<5")
             requirements.write_text(requirements_text, encoding="utf-8")
-            if remote_payload["install_flash_attn"]:
-                run([sys.executable, "-m", "pip", "install", "-U", "packaging", "ninja", "wheel", "psutil"], check=False)
-                flash_attn_result = run(
-                    [sys.executable, "-m", "pip", "install", "flash-attn", "--no-build-isolation"],
-                    check=False,
-                )
-                if flash_attn_result.returncode != 0:
-                    with log_path.open("a", encoding="utf-8") as log:
-                        log.write("\nflash-attn install failed; continuing with native PyTorch attention fallback.\n")
-                        log.flush()
             if remote_payload["install_requirements"]:
                 run([sys.executable, "-m", "pip", "install", "-U", "-r", str(requirements)])
 
@@ -723,7 +711,6 @@ def parse_args() -> argparse.Namespace:
     train.add_argument("--xcn", action="store_true", help="Use train_newbie_lora_xcn.py.")
     train.add_argument("--no-upload", action="store_true", help="Reuse config/dataset already in the Modal Volume.")
     train.add_argument("--no-install", action="store_true", help="Skip pip install -r NewbieLoraTrainer/requirements.txt.")
-    train.add_argument("--flash-attn", action="store_true", help="Try installing flash-attn acceleration; falls back if unavailable.")
     train.add_argument("--detach", action="store_true", help="Submit training and keep it running after local disconnect.")
     train.add_argument("--max-return-mb", type=int, default=128)
 
@@ -773,7 +760,6 @@ def main() -> None:
             trainer_ref=args.trainer_ref,
             use_xcn_trainer=args.xcn,
             install_requirements=not args.no_install,
-            install_flash_attn=args.flash_attn,
             upload=not args.no_upload,
             detach=args.detach,
             max_return_mb=args.max_return_mb,
