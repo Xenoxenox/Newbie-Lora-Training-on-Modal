@@ -50,6 +50,13 @@ console = Console()
 
 CONFIG_DIR = Path("configs")
 JOB_CONFIG_DIR = CONFIG_DIR / "jobs"
+GPU_SECOND_RATES = {
+    "H100": Decimal("0.001097"),
+    "A100-80GB": Decimal("0.000694"),
+    "A100-40GB": Decimal("0.000583"),
+    "L40S": Decimal("0.000542"),
+    "T4": Decimal("0.000164"),
+}
 
 Validator = Callable[[str], bool | str]
 
@@ -241,6 +248,46 @@ def dashboard_value(value: Any) -> str | None:
     if not value:
         return None
     return f"[bold cyan]{value}[/bold cyan]"
+
+
+def gpu_label(gpu: str) -> str:
+    if "100" in gpu:
+        return f"[bold reverse red] {gpu} [/bold reverse red]"
+    return f"[bold cyan]{gpu}[/bold cyan]"
+
+
+def estimated_max_gpu_cost(gpu: str, timeout_minutes: int) -> str:
+    rate = GPU_SECOND_RATES.get(gpu)
+    if rate is None:
+        return "[dim]Unavailable[/dim]"
+    cost = rate * Decimal(timeout_minutes * 60)
+    return f"{format_money(cost)} [dim]GPU max by timeout[/dim]"
+
+
+def dataset_review_value(job: TrainJob, *, first_upload: bool) -> str:
+    if first_upload and job.dataset_path:
+        return f"[bold green]UPLOAD NEW[/bold green] [dim]{job.dataset_path}[/dim]"
+    return "[dim]REUSE VOLUME[/dim] Reusing dataset already in Modal Volume"
+
+
+def print_training_review(job: TrainJob, *, first_upload: bool) -> None:
+    table = Table(show_header=False, box=None, padding=(0, 2))
+    table.add_column("Key", style="dim", no_wrap=True)
+    table.add_column("Value", style="bold white", overflow="fold")
+    table.add_row("Job Name", f"[bold white]{job.name}[/bold white]")
+    table.add_row("Config", str(job.config_path))
+    table.add_row("Dataset", dataset_review_value(job, first_upload=first_upload))
+    table.add_row("Upload", "[bold green]Yes[/bold green]" if job.upload else "[dim]No[/dim]")
+    table.add_row("GPU Type", gpu_label(job.gpu))
+    table.add_row("Timeout", f"{job.timeout_minutes} mins")
+    table.add_row("Estimated Max GPU Cost", estimated_max_gpu_cost(job.gpu, job.timeout_minutes))
+    table.add_row("Launch Mode", "[magenta]DETACHED[/magenta]" if job.detach else "[white]ATTACHED (Live Logs)[/white]")
+    table.add_row("Install Requirements", "[bold green]Yes[/bold green]" if job.install_requirements else "[dim]No[/dim]")
+    note = (
+        "[dim]Cost estimate uses Modal public GPU pricing and the timeout limit; "
+        "actual billing may include CPU, memory, storage, credits, or discounts.[/dim]"
+    )
+    console.print(Panel(Group(table, note), title="[bold yellow]PRE-FLIGHT CHECK[/bold yellow]", border_style="yellow"))
 
 
 def nearby_directory_hint(text: str, *, limit: int = 5) -> str:
@@ -648,6 +695,20 @@ def run_training_flow() -> None:
         upload=first_upload,
         detach=detach,
     )
+
+    print_step("Step 5: Summary")
+    print_training_review(job, first_upload=first_upload)
+    if not ask_confirm(
+        "Is this configuration correct?",
+        True,
+        instruction="Choose No to cancel and return to the main menu.",
+    ):
+        print_status(
+            "[yellow]Training submission canceled by user. You can re-enter 'Run training' to fix settings.[/yellow]",
+            style="yellow",
+        )
+        return
+
     if detach:
         with console.status("[bold blue]Submitting training job to Modal...[/bold blue]", spinner="dots"):
             result = run_remote_training(job)
