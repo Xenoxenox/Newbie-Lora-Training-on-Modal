@@ -83,12 +83,6 @@ python modal_newbie_train.py train `
   --timeout-minutes 360
 ```
 
-使用修改版训练入口：
-
-```powershell
-python modal_newbie_train.py train --config configs/example_lokr.toml --dataset D:\datasets\my-style --job my-style --xcn
-```
-
 续训时可以复用已经上传到 Volume 的配置和数据：
 
 ```powershell
@@ -129,10 +123,6 @@ python NewbieLoraTrainer/train_newbie_lora.py --config_file ./lokr.toml
 python /workspace/Newbie-Lora-Trainer-Public/NewbieLoraTrainer/train_newbie_lora.py --config_file /workspace/jobs/<job>/config.toml
 ```
 
-`--xcn` 会切换到：
-
-```bash
-train_newbie_lora_xcn.py
-```
+上游 `train_newbie_lora_xcn.py` 已弃用；该脚本逻辑未针对当前 Modal 场景优化，本项目固定使用 `train_newbie_lora.py`。
 
 输出较小时，程序会把 `/workspace/jobs/<job>/output` 打包回传到本地 `outputs/<job>/output.zip`。如果输出超过 `--max-return-mb`，产物会留在 Modal Volume 中，路径会显示在运行结果里。

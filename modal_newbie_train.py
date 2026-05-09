@@ -39,7 +39,6 @@ class TrainJob:
     volume_name: str = DEFAULT_VOLUME
     repo_url: str = UPSTREAM_REPO
     trainer_ref: str = "main"
-    use_xcn_trainer: bool = False
     install_requirements: bool = True
     upload: bool = True
     detach: bool = False
@@ -299,7 +298,6 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
         "remote_dataset": job.remote_dataset,
         "remote_output": job.remote_output,
         "remote_log": job.remote_log,
-        "use_xcn_trainer": job.use_xcn_trainer,
         "install_requirements": job.install_requirements,
         "max_return_mb": job.max_return_mb,
     }
@@ -381,42 +379,41 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
             model_text = model_text.replace(old_condition, new_condition, 1)
             model_py.write_text(model_text, encoding="utf-8")
 
-            for trainer_name in ("train_newbie_lora.py", "train_newbie_lora_xcn.py"):
-                trainer_py = repo_dir / "NewbieLoraTrainer" / trainer_name
-                trainer_text = trainer_py.read_text(encoding="utf-8")
-                dtype_block = (
-                    "    if mixed_precision == 'bf16':\n"
-                    "        model_dtype = torch.bfloat16\n"
-                    "    elif mixed_precision == 'fp16':\n"
-                    "        model_dtype = torch.float16\n"
-                    "    else:\n"
-                    "        model_dtype = torch.float32\n"
-                )
-                patched_dtype_block = (
-                    "    if mixed_precision == 'bf16':\n"
-                    "        model_dtype = torch.bfloat16\n"
-                    "        clip_torch_dtype = \"bfloat16\"\n"
-                    "    elif mixed_precision == 'fp16':\n"
-                    "        model_dtype = torch.float16\n"
-                    "        clip_torch_dtype = \"float16\"\n"
-                    "    else:\n"
-                    "        model_dtype = torch.float32\n"
-                    "        clip_torch_dtype = \"float32\"\n"
-                )
-                if dtype_block not in trainer_text:
-                    raise RuntimeError(f"Unable to patch dtype block in {trainer_py}")
-                trainer_text = trainer_text.replace(dtype_block, patched_dtype_block)
-                clip_replacements = {
-                    "clip_model = AutoModel.from_pretrained(clip_model_path, torch_dtype=model_dtype, trust_remote_code=True)":
-                        "clip_model = AutoModel.from_pretrained(clip_model_path, torch_dtype=clip_torch_dtype, trust_remote_code=True)",
-                    "clip_model = AutoModel.from_pretrained(clip_path, torch_dtype=model_dtype, trust_remote_code=True)":
-                        "clip_model = AutoModel.from_pretrained(clip_path, torch_dtype=clip_torch_dtype, trust_remote_code=True)",
-                }
-                for old_call, new_call in clip_replacements.items():
-                    if old_call not in trainer_text:
-                        raise RuntimeError(f"Unable to patch CLIP dtype call in {trainer_py}")
-                    trainer_text = trainer_text.replace(old_call, new_call)
-                trainer_py.write_text(trainer_text, encoding="utf-8")
+            trainer_py = repo_dir / "NewbieLoraTrainer" / "train_newbie_lora.py"
+            trainer_text = trainer_py.read_text(encoding="utf-8")
+            dtype_block = (
+                "    if mixed_precision == 'bf16':\n"
+                "        model_dtype = torch.bfloat16\n"
+                "    elif mixed_precision == 'fp16':\n"
+                "        model_dtype = torch.float16\n"
+                "    else:\n"
+                "        model_dtype = torch.float32\n"
+            )
+            patched_dtype_block = (
+                "    if mixed_precision == 'bf16':\n"
+                "        model_dtype = torch.bfloat16\n"
+                "        clip_torch_dtype = \"bfloat16\"\n"
+                "    elif mixed_precision == 'fp16':\n"
+                "        model_dtype = torch.float16\n"
+                "        clip_torch_dtype = \"float16\"\n"
+                "    else:\n"
+                "        model_dtype = torch.float32\n"
+                "        clip_torch_dtype = \"float32\"\n"
+            )
+            if dtype_block not in trainer_text:
+                raise RuntimeError(f"Unable to patch dtype block in {trainer_py}")
+            trainer_text = trainer_text.replace(dtype_block, patched_dtype_block)
+            clip_replacements = {
+                "clip_model = AutoModel.from_pretrained(clip_model_path, torch_dtype=model_dtype, trust_remote_code=True)":
+                    "clip_model = AutoModel.from_pretrained(clip_model_path, torch_dtype=clip_torch_dtype, trust_remote_code=True)",
+                "clip_model = AutoModel.from_pretrained(clip_path, torch_dtype=model_dtype, trust_remote_code=True)":
+                    "clip_model = AutoModel.from_pretrained(clip_path, torch_dtype=clip_torch_dtype, trust_remote_code=True)",
+            }
+            for old_call, new_call in clip_replacements.items():
+                if old_call not in trainer_text:
+                    raise RuntimeError(f"Unable to patch CLIP dtype call in {trainer_py}")
+                trainer_text = trainer_text.replace(old_call, new_call)
+            trainer_py.write_text(trainer_text, encoding="utf-8")
 
             requirements = repo_dir / "NewbieLoraTrainer" / "requirements.txt"
             requirements_text = requirements.read_text(encoding="utf-8")
@@ -425,10 +422,9 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
             if remote_payload["install_requirements"]:
                 run([sys.executable, "-m", "pip", "install", "-U", "-r", str(requirements)])
 
-            train_script = "train_newbie_lora_xcn.py" if remote_payload["use_xcn_trainer"] else "train_newbie_lora.py"
             command = [
                 sys.executable,
-                str(repo_dir / "NewbieLoraTrainer" / train_script),
+                str(trainer_py),
                 "--config_file",
                 str(config_file),
             ]
@@ -708,7 +704,6 @@ def parse_args() -> argparse.Namespace:
     train.add_argument("--volume", default=DEFAULT_VOLUME)
     train.add_argument("--repo-url", default=UPSTREAM_REPO)
     train.add_argument("--trainer-ref", default="main")
-    train.add_argument("--xcn", action="store_true", help="Use train_newbie_lora_xcn.py.")
     train.add_argument("--no-upload", action="store_true", help="Reuse config/dataset already in the Modal Volume.")
     train.add_argument("--no-install", action="store_true", help="Skip pip install -r NewbieLoraTrainer/requirements.txt.")
     train.add_argument("--detach", action="store_true", help="Submit training and keep it running after local disconnect.")
@@ -758,7 +753,6 @@ def main() -> None:
             volume_name=args.volume,
             repo_url=args.repo_url,
             trainer_ref=args.trainer_ref,
-            use_xcn_trainer=args.xcn,
             install_requirements=not args.no_install,
             upload=not args.no_upload,
             detach=args.detach,

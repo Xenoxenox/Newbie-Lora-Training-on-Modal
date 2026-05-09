@@ -177,7 +177,6 @@ def run_training_flow() -> None:
     dataset = ask_text("Local dataset directory (blank to reuse uploaded Volume dataset)", "")
     gpu = ask_select("GPU", ["L40S", "A100-40GB", "A100-80GB", "H100", "T4"], "L40S")
     timeout = int(ask_text("Timeout minutes", "360"))
-    use_xcn = ask_confirm("Use train_newbie_lora_xcn.py?", False)
     install = ask_confirm("Install trainer requirements in the remote container?", True)
     upload = ask_confirm("Upload config and dataset before running?", True)
     detach = ask_confirm("Detached mode (continue after local disconnect)?", False)
@@ -188,7 +187,6 @@ def run_training_flow() -> None:
         dataset_path=Path(dataset) if dataset else None,
         gpu=gpu,
         timeout_minutes=timeout,
-        use_xcn_trainer=use_xcn,
         install_requirements=install,
         upload=upload,
         detach=detach,
