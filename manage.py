@@ -165,8 +165,6 @@ def format_text_instruction(instruction: str | None, default: str) -> str | None
     lines: list[str] = []
     if instruction:
         lines.append(f"  {instruction}")
-    if default:
-        lines.append(f"  Default: {default}")
     if not lines:
         return None
     return "\n" + "\n".join(lines)
@@ -199,7 +197,7 @@ def ask_text(
 ) -> str:
     answer = questionary.text(
         message,
-        default="",
+        default=default,
         validate=default_aware_validator(validate, default),
         instruction=format_text_instruction(instruction, default),
         style=STYLE,
@@ -420,9 +418,11 @@ use_flash_attention_2 = true
     return common + adapter_block + optimization
 
 
-def create_config_flow() -> Path:
+def create_config_flow(*, show_steps: bool = True) -> Path:
     # Generated configs are kept separate from hand-written examples.
     JOB_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    if show_steps:
+        print_step("Step 1: Config Identity")
     default_name = dt.datetime.now().strftime("newbie-%Y%m%d-%H%M")
     while True:
         job_slug = ask_sanitized_name("Config/job name", default_name, "config name")
@@ -433,6 +433,8 @@ def create_config_flow() -> Path:
             instruction="Choose No to enter a different config name.",
         ):
             break
+    if show_steps:
+        print_step("Step 2: Adapter")
     adapter = ask_select(
         "Adapter type",
         [
@@ -441,6 +443,8 @@ def create_config_flow() -> Path:
         ],
     )
     output_name = ask_sanitized_name("Output model name", job_slug, "output model name")
+    if show_steps:
+        print_step("Step 3: Training Defaults")
     resolution = int(
         ask_select(
             "Training resolution",
@@ -467,7 +471,7 @@ def choose_config() -> Path:
     # Offer every TOML under configs/ so examples and generated jobs share one picker.
     choices = sorted([p for p in CONFIG_DIR.rglob("*.toml") if p.is_file()])
     if not choices:
-        return create_config_flow()
+        return create_config_flow(show_steps=False)
 
     create_new = "__create_config__"
     labels: list[Choice] = [
@@ -483,7 +487,7 @@ def choose_config() -> Path:
     )
     selected = ask_select("Training config", labels)
     if selected == create_new:
-        return create_config_flow()
+        return create_config_flow(show_steps=False)
     return selected
 
 
