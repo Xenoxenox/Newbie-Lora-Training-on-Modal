@@ -179,6 +179,7 @@ def run_training_flow() -> None:
     timeout = int(ask_text("Timeout minutes", "360"))
     use_xcn = ask_confirm("Use train_newbie_lora_xcn.py?", False)
     install = ask_confirm("Install trainer requirements in the remote container?", True)
+    install_flash_attn = ask_confirm("Try installing flash-attn acceleration?", False)
     upload = ask_confirm("Upload config and dataset before running?", True)
     detach = ask_confirm("Detached mode (continue after local disconnect)?", False)
 
@@ -190,6 +191,7 @@ def run_training_flow() -> None:
         timeout_minutes=timeout,
         use_xcn_trainer=use_xcn,
         install_requirements=install,
+        install_flash_attn=install_flash_attn,
         upload=upload,
         detach=detach,
     )
