@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 import datetime as dt
 from pathlib import Path
+import subprocess
 from typing import Any
 
 import questionary
@@ -66,6 +67,10 @@ def print_status(message: str, *, style: str = "green") -> None:
     console.print(Panel.fit(message, border_style=style, padding=(0, 2)))
 
 
+def print_step(title: str) -> None:
+    console.rule(f"[dim]{title}[/dim]", style="dim #30363d")
+
+
 def print_result_panel(
     title: str,
     rows: Sequence[tuple[str, Any]],
@@ -85,6 +90,63 @@ def print_result_panel(
 def print_log_tail(log_tail: str) -> None:
     if log_tail:
         console.print(Panel(log_tail.rstrip(), title="Log Tail", border_style="yellow"))
+
+
+def current_modal_profile() -> str | None:
+    try:
+        result = subprocess.run(
+            ["modal", "profile", "current"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    profile = result.stdout.strip()
+    return profile or None
+
+
+def print_exit_summary() -> None:
+    profile = current_modal_profile()
+    if profile:
+        print_result_panel(
+            "[bold blue]Session Closed[/bold blue]",
+            [("Modal Profile", profile), ("Dashboard", "https://modal.com/apps")],
+            border_style="blue",
+        )
+        return
+    print_status("[dim]Session closed. Modal profile unavailable.[/dim]", style="blue")
+
+
+def status_label(ok: Any) -> str:
+    if ok is True:
+        return "[bold green]SUCCESS[/bold green]"
+    if ok is False:
+        return "[bold red]FAILED[/bold red]"
+    return str(ok)
+
+
+def dashboard_value(value: Any) -> str | None:
+    if not value:
+        return None
+    return f"[bold cyan]{value}[/bold cyan]"
+
+
+def nearby_directory_hint(text: str, *, limit: int = 5) -> str:
+    candidate = Path(text).expanduser()
+    base = candidate if candidate.is_dir() else candidate.parent
+    if not str(base) or not base.exists() or not base.is_dir():
+        base = Path.cwd()
+    try:
+        directories = sorted([p.name for p in base.iterdir() if p.is_dir()])[:limit]
+    except OSError:
+        return ""
+    if not directories:
+        return ""
+    return " Available folders: " + ", ".join(directories)
 
 
 def format_instruction(instruction: str | None) -> str | None:
@@ -223,7 +285,7 @@ def validate_existing_dir(label: str) -> Validator:
         if not text:
             return f"Enter a {label}."
         if not Path(text).expanduser().is_dir():
-            return f"{label.capitalize()} not found: {text}"
+            return f"{label.capitalize()} not found: {text}.{nearby_directory_hint(text)}"
         return True
 
     return _validate
@@ -256,11 +318,12 @@ def ask_sanitized_name(message: str, default: str, noun: str) -> str:
             message,
             default,
             validate=validate_required(noun),
-            instruction="Letters, numbers, dots, underscores, and hyphens are used as-is. Other characters are converted to hyphens.",
+            instruction="Allowed: letters, numbers, dots, underscores, hyphens.",
         )
         slug = safe_slug(raw_name)
         if raw_name == slug:
             return slug
+        console.print(f"  [dim]Name preview:[/dim] [white]{raw_name}[/white] [dim]->[/dim] [bold cyan]{slug}[/bold cyan]")
         if ask_confirm(
             f"Use '{slug}' as the {noun} slug?",
             True,
@@ -274,7 +337,7 @@ def ask_dataset_directory() -> Path:
         "Local dataset directory",
         "",
         validate=validate_existing_dir("dataset directory"),
-        instruction="Select the folder that contains the images and captions to upload for this job.",
+        instruction=r"Folder containing images and captions. e.g., ./data/my_images or D:\datasets\style",
     )
     return Path(clean_path_input(dataset)).expanduser()
 
@@ -426,14 +489,19 @@ def choose_config() -> Path:
 
 def run_training_flow() -> None:
     # This flow collects local choices and delegates all Modal work to the headless runner.
+    print_step("Step 1: Job Identity")
     config = choose_config()
     job_name = ask_sanitized_name("Modal job name", config.stem, "job name")
+
+    print_step("Step 2: Inputs")
     first_upload = ask_confirm(
         "Is this dataset being uploaded for this job for the first time?",
         True,
         instruction="Choose No only when both config and dataset are already in the Modal Volume for this job.",
     )
     dataset_path = ask_dataset_directory() if first_upload else None
+
+    print_step("Step 3: Resources")
     gpu = ask_select(
         "GPU",
         [
@@ -445,6 +513,8 @@ def run_training_flow() -> None:
         ],
     )
     timeout = ask_positive_int("Timeout minutes", "360", "Timeout minutes")
+
+    print_step("Step 4: Launch Options")
     install = ask_confirm(
         "Set up or update trainer dependencies before training?",
         True,
@@ -466,16 +536,22 @@ def run_training_flow() -> None:
         upload=first_upload,
         detach=detach,
     )
-    result = run_remote_training(job)
+    if detach:
+        with console.status("[bold blue]Submitting training job to Modal...[/bold blue]", spinner="dots"):
+            result = run_remote_training(job)
+    else:
+        print_status("[bold blue]Starting remote training. Live logs may stream below.[/bold blue]", style="blue")
+        result = run_remote_training(job)
     if result.get("submitted"):
         print_result_panel(
             "[bold green]Training Job Submitted[/bold green]",
             [
+                ("Status", "[bold green]SUBMITTED[/bold green]"),
                 ("Detached", result.get("detached")),
                 ("App ID", result.get("app_id")),
                 ("Function Call ID", result.get("function_call_id")),
-                ("Dashboard", result.get("app_dashboard_url")),
-                ("Function Call", result.get("function_call_dashboard_url")),
+                ("Dashboard", dashboard_value(result.get("app_dashboard_url"))),
+                ("Function Call", dashboard_value(result.get("function_call_dashboard_url"))),
                 ("Output", result.get("output_dir")),
                 ("Log", result.get("log_path")),
             ],
@@ -486,7 +562,7 @@ def run_training_flow() -> None:
     print_result_panel(
         "[bold green]Remote Training Finished[/bold green]" if ok else "[bold red]Remote Training Failed[/bold red]",
         [
-            ("OK", ok),
+            ("Status", status_label(ok)),
             ("Output", result.get("output_dir")),
             ("Log", result.get("log_path")),
             ("Local Zip", result.get("local_zip")),
@@ -570,7 +646,7 @@ def load_model_flow() -> None:
     print_result_panel(
         "[bold green]Model Load Finished[/bold green]" if ok else "[bold red]Model Load Failed[/bold red]",
         [
-            ("OK", ok),
+            ("Status", status_label(ok)),
             ("Remote Path", result.get("remote_path")),
             ("Files", result.get("file_count")),
             ("Bytes", result.get("bytes")),
@@ -649,6 +725,7 @@ def main() -> None:
         elif action == "volume_management":
             volume_management_flow()
         else:
+            print_exit_summary()
             return
         console.print()
 
