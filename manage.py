@@ -47,6 +47,47 @@ JOB_CONFIG_DIR = CONFIG_DIR / "jobs"
 Validator = Callable[[str], bool | str]
 
 
+def format_instruction(instruction: str | None) -> str | None:
+    if not instruction:
+        return "\n\n "
+    return f"\n\n  {instruction}\n\n "
+
+
+def format_select_instruction(instruction: str | None) -> str | None:
+    if not instruction:
+        return None
+    return f"\n  {instruction}"
+
+
+def format_text_instruction(instruction: str | None, default: str) -> str | None:
+    lines: list[str] = []
+    if instruction:
+        lines.append(f"  {instruction}")
+    if default:
+        lines.append(f"  Press Enter to use: {default}")
+    if not lines:
+        return "\n\n "
+    return "\n\n" + "\n".join(lines) + "\n\n "
+
+
+def default_aware_validator(validate: Validator | None, default: str) -> Validator | None:
+    if validate is None:
+        return None
+
+    def _validate(value: str) -> bool | str:
+        candidate = value if value.strip() else default
+        return validate(candidate)
+
+    return _validate
+
+
+def confirm_message(message: str, default: bool) -> str:
+    suffix = "(Y/n)" if default else "(y/N)"
+    if message.endswith(("?", ":", ".")):
+        return f"{message} {suffix}"
+    return f"{message} {suffix}"
+
+
 def ask_text(
     message: str,
     default: str = "",
@@ -56,18 +97,26 @@ def ask_text(
 ) -> str:
     answer = questionary.text(
         message,
-        default=default,
-        validate=validate,
-        instruction=instruction,
+        default="",
+        validate=default_aware_validator(validate, default),
+        instruction=format_text_instruction(instruction, default),
         style=STYLE,
     ).ask()
     if answer is None:
         raise KeyboardInterrupt
-    return answer.strip()
+    answer = answer.strip()
+    if answer:
+        return answer
+    return default.strip()
 
 
 def ask_confirm(message: str, default: bool = False, *, instruction: str | None = None) -> bool:
-    answer = questionary.confirm(message, default=default, instruction=instruction, style=STYLE).ask()
+    answer = questionary.confirm(
+        confirm_message(message, default),
+        default=default,
+        instruction=format_instruction(instruction),
+        style=STYLE,
+    ).ask()
     if answer is None:
         raise KeyboardInterrupt
     return bool(answer)
@@ -84,7 +133,7 @@ def ask_select(
         message,
         choices=choices,
         default=default,
-        instruction=instruction,
+        instruction=format_select_instruction(instruction),
         show_description=True,
         style=STYLE,
     ).ask()
