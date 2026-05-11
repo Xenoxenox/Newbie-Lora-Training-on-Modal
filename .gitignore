@@ -2,6 +2,7 @@
 .refs/
 __pycache__/
 *.pyc
+tui_text_zh.py
 .env
 .venv/
 venv/
