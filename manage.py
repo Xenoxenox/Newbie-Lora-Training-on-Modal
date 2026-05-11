@@ -767,6 +767,7 @@ def run_training_flow() -> None:
             ("Status", status_label(ok)),
             ("Output", result.get("output_dir")),
             ("Log", result.get("log_path")),
+            ("Local App Log", result.get("local_app_log_path")),
             ("Local Zip", result.get("local_zip")),
         ],
         border_style="green" if ok else "red",

@@ -9,8 +9,10 @@ import os
 from pathlib import Path
 from pathlib import PurePosixPath
 import re
+import subprocess
 import sys
 import tempfile
+import threading
 import textwrap
 from typing import Any
 
@@ -97,6 +99,86 @@ def _load_toml_module():
     import toml  # type: ignore
 
     return toml
+
+
+def local_app_log_path(job_slug: str) -> Path:
+    logs_dir = Path("logs")
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    return logs_dir / f"modal_app_{job_slug}_{timestamp}.log"
+
+
+class AppLogStreamer:
+    """Streams Modal App logs to stdout while teeing them into a local file."""
+
+    def __init__(self, app_id: str, function_call_id: str, local_path: Path) -> None:
+        self.app_id = app_id
+        self.function_call_id = function_call_id
+        self.local_path = local_path
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._file: Any = None
+        self._process: subprocess.Popen[str] | None = None
+        self.error: str | None = None
+
+    def start(self) -> None:
+        self.local_path.parent.mkdir(parents=True, exist_ok=True)
+        self._file = self.local_path.open("a", encoding="utf-8", errors="replace")
+        self._file.write(f"# Modal App ID: {self.app_id}\n")
+        self._file.write(f"# Function Call ID: {self.function_call_id}\n\n")
+        self._file.flush()
+        self._thread = threading.Thread(target=self._run, name="modal-app-log-streamer", daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop_event.set()
+        if self._process is not None and self._process.poll() is None:
+            self._process.terminate()
+        if self._thread is not None:
+            self._thread.join(timeout=10)
+        if self._process is not None and self._process.poll() is None:
+            self._process.kill()
+        if self._file is not None:
+            self._file.flush()
+            self._file.close()
+            self._file = None
+
+    def _run(self) -> None:
+        try:
+            cmd = [
+                sys.executable,
+                "-m",
+                "modal",
+                "app",
+                "logs",
+                self.app_id,
+                "-f",
+                "--function-call",
+                self.function_call_id,
+            ]
+            self._process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+            )
+            assert self._process.stdout is not None
+            for line in self._process.stdout:
+                if self._stop_event.is_set():
+                    break
+                self._write(line)
+        except Exception as exc:  # Keep training result independent from log streaming.
+            self.error = repr(exc)
+
+    def _write(self, data: str) -> None:
+        sys.stdout.write(data)
+        sys.stdout.flush()
+        if self._file is not None:
+            self._file.write(data)
+            self._file.flush()
 
 
 def build_job_config(job: TrainJob) -> str:
@@ -554,7 +636,25 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
                 "log_path": job.remote_log,
             }
         else:
-            result = modal_train.remote(payload)
+            function_call = modal_train.spawn(payload)
+            log_streamer = AppLogStreamer(app.app_id, function_call.object_id, local_app_log_path(job.slug))
+            log_streamer.start()
+            try:
+                result = function_call.get()
+            except KeyboardInterrupt:
+                try:
+                    function_call.cancel(terminate_containers=True)
+                finally:
+                    raise
+            finally:
+                log_streamer.stop()
+            result["app_id"] = app.app_id
+            result["app_dashboard_url"] = app.get_dashboard_url()
+            result["function_call_id"] = function_call.object_id
+            result["function_call_dashboard_url"] = function_call.get_dashboard_url()
+            result["local_app_log_path"] = str(log_streamer.local_path)
+            if log_streamer.error:
+                result["local_app_log_error"] = log_streamer.error
 
     if result.get("returned_zip"):
         out_dir = Path("outputs") / job.slug
