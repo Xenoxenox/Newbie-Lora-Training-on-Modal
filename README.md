@@ -27,7 +27,7 @@ Newbie-Lora-Training-on-Modal/
 │   ├── example_lokr.toml         # LoKr 示例配置
 │   └── jobs/                     # TUI 生成的 job 配置
 ├── outputs/                      # 小体积训练产物回传目录，Git 忽略
-└── logs/                         # 本地日志目录，Git 忽略
+└── logs/                         # 本地 Modal App 日志目录，仅保留 .gitkeep
 ```
 
 ## 安装
@@ -95,6 +95,8 @@ python modal_newbie_train.py train --config configs/example_lokr.toml --job my-s
 python modal_newbie_train.py train --config configs/example_lora.toml --job my-style --no-upload --detach
 ```
 
+attached 模式会实时滚动输出 Modal App 日志，并保存到本地 `logs/modal_app_<job>_<timestamp>.log`。detached 模式只提交远端任务，不在本地持续追踪日志；可使用结果里的 App ID 或 Function Call ID 到 Modal Dashboard 查看。
+
 ## TUI
 
 ```powershell
@@ -105,9 +107,10 @@ TUI 支持：
 
 - 生成 LoRA/LoKr job TOML。
 - 从 Hugging Face 下载基础模型到 Modal Volume。
-- 上传本地数据集并启动 Modal 训练，可选择 detached 模式。
+- 分步骤上传本地数据集并启动 Modal 训练，提交前会显示 pre-flight review，可选择 detached 模式。
 - 下载训练完成后的 adapter 输出目录。
-- Volume 管理：列出、删除、重命名 Volume，打开 Dashboard。
+- Volume 管理：列出、删除、重命名 Volume，删除指定 `/jobs/<job>` 目录，打开 Dashboard。
+- attached 训练结束后在结果面板显示本地 Modal App 日志路径；失败时仍显示远端训练日志 tail。
 
 ## 配置要点
 
