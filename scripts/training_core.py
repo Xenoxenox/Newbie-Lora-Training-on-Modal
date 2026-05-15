@@ -103,6 +103,28 @@ def local_app_log_path(job_slug: str) -> Path:
     return logs_dir / f"modal_app_{job_slug}_{timestamp}.log"
 
 
+def modal_app_logs_command(app_id: str, function_call_id: str) -> list[str]:
+    cmd = [sys.executable, "-m", "modal", "app", "logs"]
+    try:
+        result = subprocess.run(
+            [*cmd, "-h"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return [*cmd, app_id]
+
+    help_text = f"{result.stdout}\n{result.stderr}"
+    if "--follow" in help_text:
+        cmd.append("--follow")
+    if "--function-call" in help_text:
+        cmd.extend(["--function-call", function_call_id])
+    cmd.append(app_id)
+    return cmd
+
+
 class AppLogStreamer:
     """Streams Modal App logs to stdout while teeing them into a local file."""
 
@@ -140,17 +162,7 @@ class AppLogStreamer:
 
     def _run(self) -> None:
         try:
-            cmd = [
-                sys.executable,
-                "-m",
-                "modal",
-                "app",
-                "logs",
-                self.app_id,
-                "-f",
-                "--function-call",
-                self.function_call_id,
-            ]
+            cmd = modal_app_logs_command(self.app_id, self.function_call_id)
             self._process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -500,14 +512,14 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
         print(
             "\nSubmitting remote training in detached mode.\n"
             "The Modal app will keep running after the local process exits.\n"
-            "Track progress with: modal app list && modal app logs <app-id> -f\n"
+            "Track progress with: modal app list && modal app logs <app-id>\n"
             "You can also check https://modal.com/apps.\n"
         )
     else:
         print(
             "\nStarting remote training. This can take a while.\n"
             "This is synchronous mode; disconnecting the local process may cancel this run.\n"
-            "Track progress with: modal app list && modal app logs <app-id> -f\n"
+            "Track progress with: modal app list && modal app logs <app-id>\n"
             "You can also check https://modal.com/apps.\n"
         )
 

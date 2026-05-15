@@ -110,7 +110,7 @@ def download_hf_model_to_volume(
 
     print(
         "\nCreating the Modal Volume and downloading the model. This can take a while.\n"
-        "Track progress with: modal app list && modal app logs <app-id> -f\n"
+        "Track progress with: modal app list && modal app logs <app-id>\n"
         "You can also check https://modal.com/apps.\n"
     )
     with app.run():
