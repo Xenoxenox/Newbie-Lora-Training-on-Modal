@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This repository runs Newbie-image LoRA/LoKr training on Modal. The main headless CLI is `modal_newbie_train.py`; the interactive TUI entrypoint is `manage.py`. TUI implementation lives under `scripts/`: shared prompt/render helpers in `scripts/tui.py`, config creation and selection in `scripts/config_flow.py`, training/model/output workflows in `scripts/training_flow.py`, Volume workflows in `scripts/volume_flow.py`, and exit billing summary in `scripts/billing.py`. Example training configs live in `configs/example_lora.toml` and `configs/example_lokr.toml`. Generated job configs are stored under `configs/jobs/` using timestamped names such as `newbie-20260507-0807.toml`. Runtime outputs, logs, virtual environments, caches, and zip artifacts are intentionally ignored by Git.
+This repository runs Newbie-image LoRA/LoKr training on Modal. The main headless CLI and compatibility import surface is `modal_newbie_train.py`; its implementation lives under `scripts/`: core training job types and remote launch in `scripts/training_core.py`, Hugging Face model loading in `scripts/model_ops.py`, Volume and output download operations in `scripts/volume_ops.py`, and CLI parsing/dispatch in `scripts/cli.py`. The interactive TUI entrypoint is `manage.py`. TUI implementation also lives under `scripts/`: shared prompt/render helpers in `scripts/tui.py`, config creation and selection in `scripts/config_flow.py`, training/model/output workflows in `scripts/training_flow.py`, Volume workflows in `scripts/volume_flow.py`, and exit billing summary in `scripts/billing.py`. Example training configs live in `configs/example_lora.toml` and `configs/example_lokr.toml`. Generated job configs are stored under `configs/jobs/` using timestamped names such as `newbie-20260507-0807.toml`. Runtime outputs, logs, virtual environments, caches, and zip artifacts are intentionally ignored by Git.
 
 ## Build, Test, and Development Commands
 
@@ -21,7 +21,7 @@ Run the TUI with `python manage.py`. Run headless training with:
 python modal_newbie_train.py train --config configs/example_lokr.toml --dataset D:\datasets\my-style --job my-style --gpu L40S
 ```
 
-Use `python -m py_compile manage.py modal_newbie_train.py scripts/tui.py scripts/config_flow.py scripts/volume_flow.py scripts/training_flow.py scripts/billing.py` as the minimum syntax check before committing Python changes that touch the TUI or Modal runner.
+Use `python -m py_compile modal_newbie_train.py manage.py scripts/tui.py scripts/config_flow.py scripts/volume_flow.py scripts/training_flow.py scripts/billing.py scripts/training_core.py scripts/model_ops.py scripts/volume_ops.py scripts/cli.py` as the minimum syntax check before committing Python changes that touch the TUI or Modal runner.
 
 ## Coding Style & Naming Conventions
 
@@ -37,4 +37,4 @@ Recent commits use short imperative summaries, sometimes in Chinese, such as `æ›
 
 ## Security & Configuration Tips
 
-Do not commit `.env`, datasets, model files, logs, outputs, or downloaded reference repositories. Treat Modal credentials and Volume contents as private. Confirm destructive Volume operations in `scripts/volume_flow.py` remain guarded by explicit user confirmation.
+Do not commit `.env`, datasets, model files, logs, outputs, or downloaded reference repositories. Treat Modal credentials and Volume contents as private. Confirm destructive Volume operations remain guarded: TUI confirmations live in `scripts/volume_flow.py`, and CLI deletion requires `--yes` in `scripts/cli.py`.
