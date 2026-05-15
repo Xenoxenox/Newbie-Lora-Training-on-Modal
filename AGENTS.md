@@ -4,6 +4,28 @@
 
 This repository runs Newbie-image LoRA/LoKr training on Modal. The main headless CLI and compatibility import surface is `modal_newbie_train.py`; its implementation lives under `scripts/`: core training job types and remote launch in `scripts/training_core.py`, Hugging Face model loading in `scripts/model_ops.py`, Volume and output download operations in `scripts/volume_ops.py`, and CLI parsing/dispatch in `scripts/cli.py`. The interactive TUI entrypoint is `manage.py`. TUI implementation also lives under `scripts/`: shared prompt/render helpers in `scripts/tui.py`, config creation and selection in `scripts/config_flow.py`, training/model/output workflows in `scripts/training_flow.py`, Volume workflows in `scripts/volume_flow.py`, and exit billing summary in `scripts/billing.py`. Example training configs live in `configs/example_lora.toml` and `configs/example_lokr.toml`. Generated job configs are stored under `configs/jobs/` using timestamped names such as `newbie-20260507-0807.toml`. Runtime outputs, logs, virtual environments, caches, and zip artifacts are intentionally ignored by Git.
 
+```text
+.
+|-- modal_newbie_train.py        # Headless CLI entrypoint and compatibility exports.
+|-- manage.py                    # Interactive TUI entrypoint.
+|-- scripts/
+|   |-- cli.py                   # Headless CLI parsing and dispatch.
+|   |-- training_core.py         # TrainJob, Modal training image, upload, remote launch.
+|   |-- model_ops.py             # Hugging Face model download into Modal Volume.
+|   |-- volume_ops.py            # Volume listing/removal/download and output download.
+|   |-- tui.py                   # Shared TUI prompt, rendering, and validation helpers.
+|   |-- config_flow.py           # Guided config generation and config selection.
+|   |-- training_flow.py         # TUI training, model-load, and output-download flows.
+|   |-- volume_flow.py           # TUI Volume management flows.
+|   `-- billing.py               # Exit-time Modal billing summary.
+|-- configs/
+|   |-- example_lora.toml
+|   |-- example_lokr.toml
+|   `-- jobs/                    # Generated job configs.
+|-- logs/                        # Runtime logs; ignored except .gitkeep.
+`-- outputs/                     # Downloaded training artifacts; ignored by Git.
+```
+
 ## Build, Test, and Development Commands
 
 Set up a local environment with:
