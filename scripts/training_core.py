@@ -5,6 +5,7 @@ import dataclasses
 import datetime as dt
 from pathlib import Path
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -22,6 +23,25 @@ VOLUME_MODELS_DIR = "/Models"
 REMOTE_REPO_DIR = f"{REMOTE_ROOT}/Newbie-Lora-Trainer-Public"
 UPSTREAM_REPO = "https://cnb.cool/xChenNing/Newbie-Lora-Trainer-Public.git"
 LOCAL_PYTHON_VERSION = f"{sys.version_info.major}.{sys.version_info.minor}"
+BAKED_TRAINER_REQUIREMENTS = (
+    "modal",
+    "toml>=0.10.2",
+    "huggingface-hub>=0.20.0",
+    "accelerate>=0.27.0",
+    "diffusers>=0.27.0",
+    "transformers>=4.38.0,<5",
+    "safetensors>=0.4.0",
+    "peft>=0.8.2",
+    "bitsandbytes>=0.42.0",
+    "lycoris-lora>=3.4.0",
+    "torchdiffeq>=0.2.0",
+    "timm",
+    "Pillow>=10.2.0",
+    "opencv-python-headless",
+    "tqdm",
+    "sentencepiece",
+    "protobuf",
+)
 
 
 @dataclasses.dataclass
@@ -216,7 +236,7 @@ def build_image(modal: Any) -> Any:
         .run_commands(
             "python -m pip install --upgrade pip",
             "pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124",
-            "pip install modal toml huggingface-hub",
+            "pip install " + " ".join(shlex.quote(req) for req in BAKED_TRAINER_REQUIREMENTS),
         )
         .env(
             {

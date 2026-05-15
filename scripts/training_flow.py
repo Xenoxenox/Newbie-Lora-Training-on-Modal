@@ -126,9 +126,9 @@ def run_training_flow() -> None:
 
     print_step("Step 4: Launch Options")
     install = ask_confirm(
-        "Set up or update trainer dependencies before training?",
+        "Refresh trainer dependencies before training?",
         True,
-        instruction="Choose Yes for first runs or after trainer updates. Choose No only when the remote environment is already prepared.",
+        instruction="Choose Yes to update from trainer requirements. Choose No only when the baked image dependencies are sufficient.",
     )
     detach = ask_confirm(
         "Keep training running if this local terminal disconnects?",
