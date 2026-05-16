@@ -178,23 +178,31 @@ def create_config_flow(*, show_steps: bool = True) -> Path:
             ],
         )
     )
+    official_epochs = "24" if adapter == "LoKr" else "30"
+    official_learning_rate = "3e-4 in the LoKr example; 1e-4 in the LoRA example"
     epochs = ask_positive_int(
         "Epochs",
-        "24" if adapter == "LoKr" else "50",
+        official_epochs,
         "Epochs",
-        instruction="Full passes over the dataset. More epochs can improve fit but raise cost and overfitting risk.",
+        instruction=(
+            f"Full passes over the dataset. Official example: {official_epochs} for {adapter}; "
+            "more epochs raise cost and overfitting risk."
+        ),
     )
     batch_size = ask_positive_int(
         "Batch size",
         "1",
         "Batch size",
-        instruction="Images processed per GPU step. Keep 1 for high resolutions or limited GPU memory.",
+        instruction="Images per GPU step. Official examples use 4; keep 1 for high resolutions or limited GPU memory.",
     )
     learning_rate = ask_positive_float_text(
         "Learning rate",
         "1e-4",
         "Learning rate",
-        instruction="Optimizer step size. 1e-4 is a conservative default; lower it if training looks unstable.",
+        instruction=(
+            f"Optimizer step size. Official examples: {official_learning_rate}; "
+            "upstream comments recommend testing 1e-4 or 2e-4."
+        ),
     )
 
     config_path.write_text(
