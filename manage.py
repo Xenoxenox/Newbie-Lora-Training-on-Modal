@@ -16,31 +16,39 @@ def main() -> None:
     print_banner()
     while True:
         # Re-enter the menu after each action so operators can inspect outputs or clean up.
-        action = ask_select(
-            "What do you want to do?",
-            [
-                Choice("Run Training", value="run_training", description="Start a NewBie LoRA/LoKr training job."),
-                Choice("Create Job Config", value="create_config", description="Generate a LoRA or LoKr TOML config for a new job."),
-                Choice("Sync Base Model", value="load_model", description="Download the NewBie base model snapshot into /workspace/Models."),
-                Choice("Download Results", value="download_output", description="Fetch a completed adapter folder from the Modal Volume."),
-                Choice("Volume Maintenance", value="volume_management", description="List, rename, delete, or open Modal Volumes."),
-                Choice("Quit", value="quit", description="Exit without changing anything else."),
-            ],
-        )
-        if action == "run_training":
-            run_training_flow()
-        elif action == "download_output":
-            download_job_output_flow()
-        elif action == "load_model":
-            load_model_flow()
-        elif action == "create_config":
-            create_config_flow()
-        elif action == "volume_management":
-            volume_management_flow()
-        else:
-            print_exit_summary(session_start, dt.datetime.now().astimezone())
-            return
+        try:
+            action = ask_select(
+                "What do you want to do?",
+                [
+                    Choice("Run Training", value="run_training", description="Start a NewBie LoRA/LoKr training job."),
+                    Choice("Create Job Config", value="create_config", description="Generate a LoRA or LoKr TOML config for a new job."),
+                    Choice("Sync Base Model", value="load_model", description="Download the NewBie base model snapshot into /workspace/Models."),
+                    Choice("Download Results", value="download_output", description="Fetch a completed adapter folder from the Modal Volume."),
+                    Choice("Volume Maintenance", value="volume_management", description="List, rename, delete, or open Modal Volumes."),
+                    Choice("Quit", value="quit", description="Exit without changing anything else."),
+                ],
+            )
+        except KeyboardInterrupt:
+            break
+
+        if action == "quit":
+            break
+
+        try:
+            if action == "run_training":
+                run_training_flow()
+            elif action == "download_output":
+                download_job_output_flow()
+            elif action == "load_model":
+                load_model_flow()
+            elif action == "create_config":
+                create_config_flow()
+            elif action == "volume_management":
+                volume_management_flow()
+        except KeyboardInterrupt:
+            console.print("[dim]Returned to main menu.[/dim]")
         console.print()
+    print_exit_summary(session_start, dt.datetime.now().astimezone())
 
 
 if __name__ == "__main__":
