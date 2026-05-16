@@ -165,7 +165,7 @@ def create_config_flow(*, show_steps: bool = True) -> Path:
             Choice("LoRA", value="LoRA", description="Smaller adapter for quicker, lower-memory experiments."),
         ],
     )
-    output_name = ask_sanitized_name("Output model name", job_slug, "output model name")
+    output_name = ask_sanitized_name("Result folder name", job_slug, "result folder name")
     if show_steps:
         print_step("Step 3: Training Defaults")
     resolution = int(
