@@ -213,7 +213,12 @@ def create_config_flow(*, show_steps: bool = True) -> Path:
     return config_path
 
 
-def choose_config(default_config: str | Path | None = None) -> Path:
+def choose_config(
+    default_config: str | Path | None = None,
+    *,
+    message: str = "Training config",
+    instruction: str | None = None,
+) -> Path:
     # Offer every TOML under configs/ so examples and generated jobs share one picker.
     choices = sorted([p for p in CONFIG_DIR.rglob("*.toml") if p.is_file()])
     if not choices:
@@ -234,7 +239,7 @@ def choose_config(default_config: str | Path | None = None) -> Path:
             description="Build a fresh LoRA/LoKr job config through guided prompts.",
         )
     )
-    selected = ask_select("Training config", labels, default=default_choice)
+    selected = ask_select(message, labels, default=default_choice, instruction=instruction)
     if selected == create_new:
         return create_config_flow(show_steps=False)
     return selected

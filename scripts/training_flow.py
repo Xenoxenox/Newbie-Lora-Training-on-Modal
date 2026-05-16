@@ -256,7 +256,10 @@ def load_model_flow() -> None:
 
 def download_job_output_flow() -> None:
     # Download the final adapter folder inferred from the job name and config.
-    config = choose_config()
+    config = choose_config(
+        message="Config for output lookup",
+        instruction="Used to read Model.output_name and locate /jobs/<job>/output/<output_name>.",
+    )
     job_name = ask_sanitized_name("Modal job name used for training", config.stem, "job name")
     output_name = ask_text(
         "Remote output folder override",
