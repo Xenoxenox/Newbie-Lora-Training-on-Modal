@@ -239,9 +239,9 @@ def validate_volume_name(value: str) -> bool | str:
     return True
 
 
-def ask_positive_int(message: str, default: str, label: str, *, minimum: int = 1) -> int:
-    return int(ask_text(message, default, validate=validate_positive_int(label, minimum=minimum)))
+def ask_positive_int(message: str, default: str, label: str, *, minimum: int = 1, instruction: str | None = None) -> int:
+    return int(ask_text(message, default, validate=validate_positive_int(label, minimum=minimum), instruction=instruction))
 
 
-def ask_positive_float_text(message: str, default: str, label: str) -> str:
-    return ask_text(message, default, validate=validate_positive_float(label))
+def ask_positive_float_text(message: str, default: str, label: str, *, instruction: str | None = None) -> str:
+    return ask_text(message, default, validate=validate_positive_float(label), instruction=instruction)

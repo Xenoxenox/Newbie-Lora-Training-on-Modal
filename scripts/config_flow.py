@@ -178,9 +178,24 @@ def create_config_flow(*, show_steps: bool = True) -> Path:
             ],
         )
     )
-    epochs = ask_positive_int("Epochs", "24" if adapter == "LoKr" else "50", "Epochs")
-    batch_size = ask_positive_int("Batch size", "1", "Batch size")
-    learning_rate = ask_positive_float_text("Learning rate", "1e-4", "Learning rate")
+    epochs = ask_positive_int(
+        "Epochs",
+        "24" if adapter == "LoKr" else "50",
+        "Epochs",
+        instruction="Full passes over the dataset. More epochs can improve fit but raise cost and overfitting risk.",
+    )
+    batch_size = ask_positive_int(
+        "Batch size",
+        "1",
+        "Batch size",
+        instruction="Images processed per GPU step. Keep 1 for high resolutions or limited GPU memory.",
+    )
+    learning_rate = ask_positive_float_text(
+        "Learning rate",
+        "1e-4",
+        "Learning rate",
+        instruction="Optimizer step size. 1e-4 is a conservative default; lower it if training looks unstable.",
+    )
 
     config_path.write_text(
         render_lora_config(job_slug, output_name, adapter, resolution, epochs, batch_size, learning_rate),
