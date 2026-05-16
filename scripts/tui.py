@@ -35,8 +35,8 @@ Validator = Callable[[str], bool | str]
 def print_banner() -> None:
     console.print(
         Panel.fit(
-            "[bold cyan]Newbie-image[/bold cyan] [magenta]LoRA Modal Manager[/magenta]\n"
-            "[dim]Terminal UI for Modal Training Workflows[/dim]",
+            "[bold cyan]NewBie-image[/bold cyan] [magenta]LoRA Training Wizard[/magenta]\n"
+            "[dim]Guided Modal workflow for NewBie LoRA/LoKr jobs[/dim]",
             border_style="blue",
             padding=(1, 4),
         )

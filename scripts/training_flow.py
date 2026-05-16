@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,7 @@ from modal_newbie_train import (
 )
 from scripts.billing import format_money
 from scripts.config_flow import ask_dataset_directory, ask_sanitized_name, choose_config
+from scripts.preferences import load_preferences, save_preferences
 from scripts.tui import (
     ask_confirm,
     ask_positive_int,
@@ -71,25 +73,31 @@ def estimated_max_gpu_cost(gpu: str, timeout_minutes: int) -> str:
     return f"{format_money(cost)} [dim]GPU max by timeout[/dim]"
 
 
-def dataset_review_value(job: TrainJob, *, first_upload: bool) -> str:
-    if first_upload and job.dataset_path:
+def dataset_review_value(job: TrainJob) -> str:
+    if job.upload and job.dataset_path:
         return f"[bold green]UPLOAD NEW[/bold green] [dim]{job.dataset_path}[/dim]"
     return "[dim]REUSE VOLUME[/dim] Reusing dataset already in Modal Volume"
 
 
-def print_training_review(job: TrainJob, *, first_upload: bool) -> None:
+def launch_mode_label(detach: bool) -> str:
+    if detach:
+        return "[magenta]Detached (Background)[/magenta]"
+    return "[white]Attached (Live Logs)[/white]"
+
+
+def print_training_review(job: TrainJob) -> None:
     table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_column("Key", style="dim", no_wrap=True)
     table.add_column("Value", style="bold white", overflow="fold")
     table.add_row("Job Name", f"[bold white]{job.name}[/bold white]")
     table.add_row("Config", str(job.config_path))
-    table.add_row("Dataset", dataset_review_value(job, first_upload=first_upload))
+    table.add_row("Dataset", dataset_review_value(job))
     table.add_row("Upload", "[bold green]Yes[/bold green]" if job.upload else "[dim]No[/dim]")
     table.add_row("GPU Type", gpu_label(job.gpu))
     table.add_row("Timeout", f"{job.timeout_minutes} mins")
     table.add_row("Estimated Max GPU Cost", estimated_max_gpu_cost(job.gpu, job.timeout_minutes))
-    table.add_row("Launch Mode", "[magenta]DETACHED[/magenta]" if job.detach else "[white]ATTACHED (Live Logs)[/white]")
-    table.add_row("Install Requirements", "[bold green]Yes[/bold green]" if job.install_requirements else "[dim]No[/dim]")
+    table.add_row("Launch Mode", launch_mode_label(job.detach))
+    table.add_row("Dependencies", "[dim]Baked image[/dim]")
     note = (
         "[dim]Cost estimate uses Modal public GPU pricing and the timeout limit; "
         "actual billing may include CPU, memory, storage, credits, or discounts.[/dim]"
@@ -99,42 +107,49 @@ def print_training_review(job: TrainJob, *, first_upload: bool) -> None:
 
 def run_training_flow() -> None:
     # This flow collects local choices and delegates all Modal work to the headless runner.
+    preferences = load_preferences()
     print_step("Step 1: Job Identity")
-    config = choose_config()
+    config = choose_config(preferences.get("last_config"))
     job_name = ask_sanitized_name("Modal job name", config.stem, "job name")
 
     print_step("Step 2: Inputs")
-    first_upload = ask_confirm(
-        "Is this dataset being uploaded for this job for the first time?",
-        True,
-        instruction="Choose No only when both config and dataset are already in the Modal Volume for this job.",
+    dataset_source = ask_select(
+        "Dataset source",
+        [
+            Choice("Upload local dataset", value="upload", description="Upload a local dataset folder for this job."),
+            Choice("Reuse dataset already in Volume", value="reuse", description="Use the existing /jobs/<job>/dataset in Modal Volume."),
+        ],
     )
-    dataset_path = ask_dataset_directory() if first_upload else None
+    upload = dataset_source == "upload"
+    dataset_path = ask_dataset_directory() if upload else None
 
     print_step("Step 3: Resources")
+    preferred_gpu = str(preferences.get("last_gpu") or "L40S")
     gpu = ask_select(
         "GPU",
         [
-            Choice("L40S", value="L40S", checked=True, description="Recommended default for cost and speed."),
+            Choice("L40S", value="L40S", description="Recommended default for cost and speed."),
             Choice("A100-40GB", value="A100-40GB", description="More memory for heavier runs."),
             Choice("A100-80GB", value="A100-80GB", description="Large-memory A100 option."),
             Choice("H100", value="H100", description="Fastest option with higher cost."),
             Choice("T4", value="T4", description="Lower-cost option for small tests."),
         ],
+        default=preferred_gpu if preferred_gpu in GPU_SECOND_RATES else "L40S",
     )
-    timeout = ask_positive_int("Timeout minutes", "360", "Timeout minutes")
+    timeout_default = str(preferences.get("last_timeout") or "360")
+    timeout = ask_positive_int("Timeout minutes", timeout_default, "Timeout minutes")
 
     print_step("Step 4: Launch Options")
-    install = ask_confirm(
-        "Refresh trainer dependencies before training?",
-        True,
-        instruction="Choose Yes to update from trainer requirements. Choose No only when the baked image dependencies are sufficient.",
+    preferred_run_mode = str(preferences.get("last_run_mode") or "attached")
+    run_mode = ask_select(
+        "Launch mode",
+        [
+            Choice("Attached (Live Logs)", value="attached", description="Stream Modal logs in this terminal until training finishes."),
+            Choice("Detached (Background)", value="detached", description="Submit the job and let Modal continue in the background."),
+        ],
+        default=preferred_run_mode if preferred_run_mode in {"attached", "detached"} else "attached",
     )
-    detach = ask_confirm(
-        "Keep training running if this local terminal disconnects?",
-        False,
-        instruction="Detached mode submits the job and returns control locally while Modal continues running.",
-    )
+    detach = run_mode == "detached"
 
     job = TrainJob(
         name=job_name,
@@ -142,13 +157,13 @@ def run_training_flow() -> None:
         dataset_path=dataset_path,
         gpu=gpu,
         timeout_minutes=timeout,
-        install_requirements=install,
-        upload=first_upload,
+        install_requirements=False,
+        upload=upload,
         detach=detach,
     )
 
     print_step("Step 5: Summary")
-    print_training_review(job, first_upload=first_upload)
+    print_training_review(job)
     if not ask_confirm(
         "Is this configuration correct?",
         True,
@@ -160,6 +175,14 @@ def run_training_flow() -> None:
         )
         return
 
+    save_preferences(
+        {
+            "last_config": str(config),
+            "last_gpu": gpu,
+            "last_timeout": timeout,
+            "last_run_mode": run_mode,
+        }
+    )
     if detach:
         with console.status("[bold blue]Submitting training job to Modal...[/bold blue]", spinner="dots"):
             result = run_remote_training(job)
@@ -200,20 +223,22 @@ def run_training_flow() -> None:
 
 def load_model_flow() -> None:
     # Newbie training configs expect the base model to live at /workspace/Models.
-    repo = ask_text(
-        "Hugging Face repo or URL",
-        DEFAULT_HF_REPO,
-        validate=validate_required("Hugging Face repo or URL"),
-        instruction="Use owner/name or a huggingface.co model URL.",
+    console.print(
+        Panel(
+            f"[dim]Model:[/dim] [bold cyan]{DEFAULT_HF_REPO}[/bold cyan]\n"
+            "[dim]Target:[/dim] [bold cyan]/workspace/Models[/bold cyan]",
+            title="[bold cyan]Base Model[/bold cyan]",
+            border_style="cyan",
+        )
     )
-    revision = ask_text("Revision", "", instruction="Leave blank to use the repository default branch.")
     timeout = ask_positive_int("Timeout minutes", "360", "Timeout minutes")
+    default_secret = os.environ.get("MODAL_HF_SECRET_NAME", "").strip() or DEFAULT_HF_SECRET
     hf_secret = ask_text(
         "Modal Secret name for HF_TOKEN",
-        DEFAULT_HF_SECRET,
+        default_secret,
         validate=validate_required("Modal Secret name"),
     )
-    result = download_hf_model_to_volume(repo, revision or None, DEFAULT_VOLUME, timeout, hf_secret)
+    result = download_hf_model_to_volume(DEFAULT_HF_REPO, None, DEFAULT_VOLUME, timeout, hf_secret)
 
     ok = result.get("ok")
     print_result_panel(

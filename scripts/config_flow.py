@@ -6,6 +6,7 @@ from pathlib import Path
 from questionary import Choice
 
 from modal_newbie_train import safe_slug
+from scripts.preferences import load_preferences
 from scripts.tui import (
     ask_confirm,
     ask_positive_float_text,
@@ -59,6 +60,13 @@ def config_description(path: Path) -> str:
     if path.parent == JOB_CONFIG_DIR:
         return "Generated job config."
     return "Example or hand-written config."
+
+
+def same_config_path(left: Path, right: Path) -> bool:
+    try:
+        return left.resolve() == right.resolve()
+    except OSError:
+        return left == right
 
 
 def render_lora_config(
@@ -182,12 +190,15 @@ def create_config_flow(*, show_steps: bool = True) -> Path:
     return config_path
 
 
-def choose_config() -> Path:
+def choose_config(default_config: str | Path | None = None) -> Path:
     # Offer every TOML under configs/ so examples and generated jobs share one picker.
     choices = sorted([p for p in CONFIG_DIR.rglob("*.toml") if p.is_file()])
     if not choices:
         return create_config_flow(show_steps=False)
 
+    default_config = default_config or load_preferences().get("last_config")
+    default_path = Path(default_config) if default_config else None
+    default_choice = next((path for path in choices if default_path and same_config_path(path, default_path)), None)
     create_new = "__create_config__"
     labels: list[Choice] = [
         Choice(str(path), value=path, description=config_description(path))
@@ -200,7 +211,7 @@ def choose_config() -> Path:
             description="Build a fresh LoRA/LoKr job config through guided prompts.",
         )
     )
-    selected = ask_select("Training config", labels)
+    selected = ask_select("Training config", labels, default=default_choice)
     if selected == create_new:
         return create_config_flow(show_steps=False)
     return selected

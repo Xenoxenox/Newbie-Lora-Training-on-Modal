@@ -19,11 +19,11 @@ def main() -> None:
         action = ask_select(
             "What do you want to do?",
             [
-                Choice("Run training", value="run_training", description="Upload or reuse inputs and start a Modal training job."),
-                Choice("Download job output", value="download_output", description="Fetch a completed adapter folder from the Modal Volume."),
-                Choice("Load model to Volume", value="load_model", description="Download the base model snapshot into /workspace/Models."),
-                Choice("Create config", value="create_config", description="Generate a LoRA or LoKr TOML config for a new job."),
-                Choice("Manage Volumes", value="volume_management", description="List, rename, delete, or open Modal Volumes."),
+                Choice("Run Training", value="run_training", description="Start a NewBie LoRA/LoKr training job."),
+                Choice("Create Job Config", value="create_config", description="Generate a LoRA or LoKr TOML config for a new job."),
+                Choice("Sync Base Model", value="load_model", description="Download the NewBie base model snapshot into /workspace/Models."),
+                Choice("Download Results", value="download_output", description="Fetch a completed adapter folder from the Modal Volume."),
+                Choice("Volume Maintenance", value="volume_management", description="List, rename, delete, or open Modal Volumes."),
                 Choice("Quit", value="quit", description="Exit without changing anything else."),
             ],
         )
