@@ -1,36 +1,36 @@
-# Newbie-Lora-Training-on-Modal
+# Newbie LoRA Training on Modal
 
-Run LoRA/LoKr training for the Newbie-image model on Modal.
+Run NewBie-image LoRA/LoKr training on Modal from a local terminal.
 
-这个项目提供两个入口：
+This project keeps your local machine as the controller. Base model sync,
+dataset upload, training, result download, and Volume maintenance run through a
+small TUI or a headless CLI. GPU work happens inside Modal containers; training
+inputs and outputs live in a Modal Volume.
 
-- `modal_newbie_train.py`：无头 CLI，用 Modal 远程运行 Newbie-image LoRA/LoKr 训练。
-- `manage.py`：基于 `questionary` 的 TUI，用来生成配置、上传数据集、启动训练和管理 Modal Volume。
+## Who this is for
 
-实现参考了三个来源：
+Use this project if you want to:
 
-- [TransWithAI/Faster-Whisper-TransWithAI-ChickenRice](https://github.com/TransWithAI/Faster-Whisper-TransWithAI-ChickenRice)：轻量本地 submitter、Modal Volume 上传、远端 clone/update、dict payload 返回。
-- [Xenoxenox/modal-comfyui](https://github.com/Xenoxenox/Newbie-Lora-Training-on-Modal)：Modal Volume 管理和 TUI 菜单风格。
-- [xChenNing/Newbie-Lora-Trainer-Public](https://cnb.cool/xChenNing/Newbie-Lora-Trainer-Public/-/tree/main)：Newbie 训练入口和配置布局。
+- train NewBie-image LoRA or LoKr adapters without managing a GPU server;
+- keep the NewBie base model and job artifacts in a persistent Modal Volume;
+- create job TOML configs from guided prompts instead of editing every field by hand;
+- upload a local dataset once, then reuse the same `/jobs/<job>/dataset` path;
+- run attached training with live logs or detached training that continues after local disconnect;
+- download finished adapter folders back to `outputs/`.
 
-## 目录结构
+Modal is usage-based. Check the current Modal pricing page before relying on any
+GPU, storage, or free-credit assumptions:
 
-```text
-Newbie-Lora-Training-on-Modal/
-├── manage.py                     # 交互式 TUI：生成配置、上传数据、启动训练、管理 Volume
-├── modal_newbie_train.py         # 无头 CLI：提交 Modal 远程训练任务
-├── requirements.txt              # 本地运行依赖
-├── README.md                     # 项目说明
-├── AGENTS.md                     # 贡献者与代理协作指南
-├── configs/
-│   ├── example_lora.toml         # LoRA 示例配置
-│   ├── example_lokr.toml         # LoKr 示例配置
-│   └── jobs/                     # TUI 生成的 job 配置
-├── outputs/                      # 小体积训练产物回传目录，Git 忽略
-└── logs/                         # 本地 Modal App 日志目录，仅保留 .gitkeep
-```
+https://modal.com/pricing
 
-## 安装
+## Prerequisites
+
+- A Modal account.
+- Python 3.11+ locally.
+- A terminal that supports interactive prompts.
+- A Hugging Face token if the base model repository requires authentication.
+
+Install local dependencies and authenticate Modal:
 
 ```powershell
 python -m venv .venv
@@ -39,40 +39,180 @@ pip install -r requirements.txt
 modal setup
 ```
 
-## 训练前准备
+If `modal` is not found after installation, keep the virtual environment
+activated before running Modal commands.
 
-Modal Volume 会挂载到远端 `/workspace`。默认布局：
+## Fast Path: Use The TUI
+
+Start the guided training wizard:
+
+```powershell
+python manage.py
+```
+
+The main menu is organized around the normal training path:
+
+- `Create Job Config` creates a LoRA/LoKr TOML under `configs/jobs/`.
+- `Sync Base Model` downloads `NewBie-AI/NewBie-image-Exp0.1` into `/workspace/Models`.
+- `Run Training` uploads or reuses inputs and launches a Modal training job.
+- `Download Results` downloads `/jobs/<job>/output/<result-folder>`.
+- `Volume Maintenance` lists, renames, deletes, or opens Modal Volumes.
+
+In submenus, `Ctrl+C` returns to the main menu. At the main menu, `Ctrl+C` exits.
+
+## Create A Job Config
+
+Choose `Create Job Config` in the TUI.
+
+The generated config mirrors the Modal workspace layout:
 
 ```text
-/workspace/Newbie-Lora-Trainer-Public   # 远端自动 clone/update
-/workspace/Models                       # Newbie-image 基础模型目录
-/workspace/jobs/<job>/dataset           # 上传的数据集
-/workspace/jobs/<job>/config.toml       # 上传的训练配置
-/workspace/jobs/<job>/output            # 训练输出
+/workspace/Models
+/workspace/jobs/<job>/dataset
+/workspace/jobs/<job>/config.toml
+/workspace/jobs/<job>/output
 ```
 
-需要先把 Newbie-image 模型文件放到 Modal Volume 的 `/Models`。训练配置里的 `base_model_path` 默认就是 `/workspace/Models`，本项目通过 TUI 或 CLI 从 Hugging Face 下载 snapshot 到该目录。
+Important prompts:
 
-如果模型仓库需要 Hugging Face token，先在 Modal 创建 Secret。默认 Secret 名称为 `LoRATraining`，其中的键名为 `HF_TOKEN`：
+- `Config/job name`: the job slug used for Modal paths and the config filename.
+- `Adapter type`: `LoKr` or `LoRA`.
+- `Result folder name`: written to `Model.output_name`; `Download Results` uses it to locate `/jobs/<job>/output/<result-folder>`.
+- `Training resolution`: official examples recommend `1024`; higher values cost more GPU memory.
+- `Epochs`: official examples use `24` for LoKr and `30` for LoRA.
+- `Batch size`: official examples use `4`; the TUI defaults to `1` for safer high-resolution Modal runs.
+- `Learning rate`: official examples use `3e-4` for LoKr and `1e-4` for LoRA; upstream comments recommend testing `1e-4` or `2e-4`.
 
-```powershell
-modal secret create LoRATraining HF_TOKEN=hf_xxx
+Generated configs are local files. They do not store Hugging Face tokens.
+
+## Sync The Base Model
+
+Choose `Sync Base Model` in the TUI before your first training run.
+
+The TUI always uses the NewBie base model repo:
+
+```text
+NewBie-AI/NewBie-image-Exp0.1
 ```
 
-从 Hugging Face 下载完整 diffusers snapshot 到 `/workspace/Models`（默认仓库 `NewBie-AI/NewBie-image-Exp0.1`）：
+It downloads the snapshot into:
+
+```text
+/workspace/Models
+```
+
+For private Hugging Face access, create a Modal Secret named `LoRATraining`
+containing an `HF_TOKEN` key. Enter the real token only in your local terminal;
+do not paste token values into documentation, configs, or logs.
+
+You can change the TUI default secret name with a local environment variable:
 
 ```powershell
-# 使用默认仓库
+$env:MODAL_HF_SECRET_NAME="YourSecretName"
+python manage.py
+```
+
+Do not write token values into TOML configs, README examples, or logs.
+
+## Prepare A Dataset
+
+Use a local folder containing images and matching caption `.txt` files. The
+trainer also supports kohya-style repeated folders such as:
+
+```text
+10_character/
+  image001.png
+  image001.txt
+```
+
+During `Run Training`, choose one dataset source:
+
+- `Upload local dataset`: uploads your local dataset into `/jobs/<job>/dataset`.
+- `Reuse dataset already in Volume`: skips upload and expects `/jobs/<job>/dataset` to already exist.
+
+This project intentionally keeps datasets job-scoped for now. It does not move
+datasets into a shared `/datasets` tree.
+
+## Run Training
+
+Choose `Run Training` in the TUI.
+
+The wizard asks for:
+
+- config;
+- Modal job name;
+- dataset source;
+- GPU type;
+- timeout minutes;
+- launch mode.
+
+Launch modes:
+
+- `Attached (Live Logs)`: streams Modal logs locally until the run finishes.
+- `Detached (Background)`: submits the job and returns control while Modal continues running.
+
+Before submission, the TUI shows a pre-flight summary with job name, config,
+dataset, upload mode, GPU, timeout, estimated max GPU cost, launch mode, and
+dependencies. The TUI uses the baked training image by default:
+
+```text
+Dependencies: Baked image
+```
+
+The runtime dependency install path is still available through the CLI for
+advanced fallback scenarios; the TUI does not prompt for it on the main path.
+
+## Download Results
+
+Choose `Download Results` after a job finishes.
+
+The config picker is used to read `Model.output_name`. Together with the Modal
+job name, it resolves the remote folder:
+
+```text
+/jobs/<job>/output/<output_name>
+```
+
+By default, results download to:
+
+```text
+outputs/<job>/<output_name>
+```
+
+If your remote output folder differs from `Model.output_name`, use the
+`Remote output folder override` prompt.
+
+## Volume Maintenance
+
+Choose `Volume Maintenance` in the TUI to:
+
+- list Modal Volumes;
+- delete a job directory under `/jobs/<job>`;
+- delete a whole Volume;
+- rename a Volume;
+- open the Volume dashboard.
+
+Destructive TUI operations require confirmation. The CLI also refuses Volume
+deletion unless `--yes` is passed.
+
+The default Volume name is:
+
+```text
+newbie-image-lora
+```
+
+## Headless CLI
+
+The TUI is recommended for normal use. The CLI is available for automation and
+advanced workflows.
+
+Sync the default base model:
+
+```powershell
 python modal_newbie_train.py model-download-hf
-
-# 指定其他仓库
-python modal_newbie_train.py model-download-hf --repo owner/name
-
-# 指定 revision
-python modal_newbie_train.py model-download-hf --revision main
 ```
 
-## 无头运行
+Train with upload:
 
 ```powershell
 python modal_newbie_train.py train `
@@ -83,49 +223,128 @@ python modal_newbie_train.py train `
   --timeout-minutes 360
 ```
 
-续训时可以复用已经上传到 Volume 的配置和数据：
+Reuse an already uploaded job config and dataset:
 
 ```powershell
-python modal_newbie_train.py train --config configs/example_lokr.toml --job my-style --no-upload
+python modal_newbie_train.py train `
+  --config configs/example_lokr.toml `
+  --job my-style `
+  --no-upload
 ```
 
-长时间训练可使用 detached 模式，提交后本地断开也不会取消远程训练：
+Submit a detached background run:
 
 ```powershell
-python modal_newbie_train.py train --config configs/example_lora.toml --job my-style --no-upload --detach
+python modal_newbie_train.py train `
+  --config configs/example_lora.toml `
+  --job my-style `
+  --no-upload `
+  --detach
 ```
 
-attached 模式会实时滚动输出 Modal App 日志，并保存到本地 `logs/modal_app_<job>_<timestamp>.log`。detached 模式只提交远端任务，不在本地持续追踪日志；可使用结果里的 App ID 或 Function Call ID 到 Modal Dashboard 查看。
-
-## TUI
+Skip runtime dependency install from the upstream trainer requirements:
 
 ```powershell
-python manage.py
+python modal_newbie_train.py train `
+  --config configs/example_lokr.toml `
+  --dataset D:\datasets\my-style `
+  --job my-style `
+  --no-install
 ```
 
-TUI 支持：
+Download a finished job output using `Model.output_name` from the config:
 
-- 生成 LoRA/LoKr job TOML。
-- 从 Hugging Face 下载基础模型到 Modal Volume。
-- 分步骤上传本地数据集并启动 Modal 训练，提交前会显示 pre-flight review，可选择 detached 模式。
-- 下载训练完成后的 adapter 输出目录。
-- Volume 管理：列出、删除、重命名 Volume，删除指定 `/jobs/<job>` 目录，打开 Dashboard。
-- attached 训练结束后在结果面板显示本地 Modal App 日志路径；失败时仍显示远端训练日志 tail。
-
-## 配置要点
-
-Newbie 官方训练入口是：
-
-```bash
-python NewbieLoraTrainer/train_newbie_lora.py --config_file ./lokr.toml
+```powershell
+python modal_newbie_train.py job-download `
+  --job my-style `
+  --config configs/example_lokr.toml
 ```
 
-本项目在 Modal 里等价执行：
+List and download Volume paths:
+
+```powershell
+python modal_newbie_train.py volume-list /jobs
+python modal_newbie_train.py volume-download /jobs/my-style/output/my-style outputs/my-style/my-style
+```
+
+Remove a Volume path:
+
+```powershell
+python modal_newbie_train.py volume-rm /jobs/my-style --yes
+```
+
+## Modal Workspace Layout
+
+Modal mounts the training Volume at `/workspace`.
+
+```text
+/workspace/Newbie-Lora-Trainer-Public   # upstream trainer clone/update
+/workspace/Models                       # NewBie base model snapshot
+/workspace/jobs/<job>/config.toml       # uploaded job config
+/workspace/jobs/<job>/dataset           # uploaded dataset
+/workspace/jobs/<job>/output            # adapter outputs
+/workspace/jobs/<job>/logs/train.log    # remote trainer log
+```
+
+The local repository stores runtime artifacts in ignored folders:
+
+```text
+logs/       # local Modal app logs
+outputs/    # downloaded results
+configs/jobs/ # generated job configs
+.modal-newbie/preferences.json # non-sensitive TUI preferences
+```
+
+The preference file stores only non-sensitive values such as the last config,
+GPU, timeout, and run mode. It does not store tokens.
+
+## Trainer Source
+
+Remote training uses the upstream Newbie trainer:
+
+https://cnb.cool/xChenNing/Newbie-Lora-Trainer-Public
+
+Inside Modal, this project runs:
 
 ```bash
 python /workspace/Newbie-Lora-Trainer-Public/NewbieLoraTrainer/train_newbie_lora.py --config_file /workspace/jobs/<job>/config.toml
 ```
 
-上游 `train_newbie_lora_xcn.py` 已弃用；该脚本逻辑未针对当前 Modal 场景优化，本项目固定使用 `train_newbie_lora.py`。
+The Modal training image bakes stable training dependencies. Runtime
+`install_requirements` logic remains in the headless runner as an advanced
+fallback, but the TUI main path uses the baked image.
 
-输出较小时，程序会把 `/workspace/jobs/<job>/output` 打包回传到本地 `outputs/<job>/output.zip`。如果输出超过 `--max-return-mb`，产物会留在 Modal Volume 中，路径会显示在运行结果里。
+## Security Notes
+
+- Do not commit `.env`, datasets, model files, logs, outputs, or downloaded reference repositories.
+- Treat Modal credentials and Volume contents as private.
+- Keep Hugging Face tokens in Modal Secrets, not in TOML, README examples, or logs.
+- Review job names before upload: uploading a job deletes and replaces that job's old `/config.toml` and `/dataset` paths.
+- Be careful with Volume names: some operations can create or target a Modal Volume by name.
+
+## Command Reference
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+modal setup
+python manage.py
+python modal_newbie_train.py model-download-hf
+python modal_newbie_train.py train --config configs/example_lokr.toml --dataset D:\datasets\my-style --job my-style --gpu L40S
+python modal_newbie_train.py train --config configs/example_lokr.toml --job my-style --no-upload --detach
+python modal_newbie_train.py job-download --job my-style --config configs/example_lokr.toml
+python modal_newbie_train.py volume-list /jobs
+```
+
+## Contributing
+
+Keep changes focused on the user workflow. For Python changes, run:
+
+```powershell
+python -m py_compile modal_newbie_train.py manage.py scripts/tui.py scripts/config_flow.py scripts/volume_flow.py scripts/training_flow.py scripts/billing.py scripts/training_core.py scripts/model_ops.py scripts/volume_ops.py scripts/cli.py scripts/preferences.py
+git diff --check
+```
+
+For Modal training changes, record the config, GPU, whether upload was used,
+and whether the run was attached or detached.
