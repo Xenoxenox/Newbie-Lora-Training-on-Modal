@@ -15,19 +15,19 @@ from scripts.training_flow import (
     print_modal_secret_status,
     run_training_flow,
 )
-from scripts.secret_config import load_config, modal_auth_is_missing, modal_secret_statuses
+from scripts.secret_config import fresh_modal_status_snapshot, load_config, modal_auth_is_missing
 from scripts.tui import ask_confirm, ask_select, console, print_banner, print_status
 from scripts.volume_flow import volume_management_flow
 
 
 def prompt_modal_setup_if_needed() -> None:
     config = load_config()
-    statuses = modal_secret_statuses(config)
-    if not modal_auth_is_missing(statuses):
-        print_modal_secret_status()
+    snapshot = fresh_modal_status_snapshot(config)
+    if not modal_auth_is_missing(snapshot):
+        print_modal_secret_status(snapshot=snapshot)
         return
 
-    print_modal_secret_status()
+    print_modal_secret_status(snapshot=snapshot)
     try:
         run_setup = ask_confirm("Modal token is missing. Do you want to run 'modal setup' now?", True)
     except KeyboardInterrupt:
@@ -44,7 +44,7 @@ def prompt_modal_setup_if_needed() -> None:
             f"[yellow]Modal setup exited with code {result.returncode}. You can retry from the terminal or continue in the TUI.[/yellow]",
             style="yellow",
         )
-    print_modal_secret_status()
+    print_modal_secret_status(fresh=True)
 
 
 def main() -> None:

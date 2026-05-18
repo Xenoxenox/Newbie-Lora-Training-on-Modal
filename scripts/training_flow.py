@@ -27,10 +27,12 @@ from scripts.secret_config import (
     HF_SECRET_SPEC,
     HF_TOKEN_KEY,
     MODAL_HF_SECRET_NAME_ENV,
+    ModalStatusSnapshot,
     configured_hf_secret_name,
+    fresh_modal_status_snapshot,
     load_config,
     modal_secret_names,
-    modal_secret_statuses,
+    modal_status_snapshot,
     save_config,
     set_hf_secret_config,
     upsert_modal_secret,
@@ -106,26 +108,60 @@ def modal_app_cleanup_note(result: dict[str, Any]) -> str | None:
     return f"Modal app normally closes automatically. If it lingers, run: {stop_command}"
 
 
-def print_modal_secret_status(*, known_existing: set[str] | None = None) -> None:
-    config = load_config()
-    statuses = modal_secret_statuses(config, known_existing=known_existing)
+def status_value(prefix: str, detail: str) -> str:
+    return f"{prefix}: {detail}" if detail else prefix
+
+
+def print_modal_status_snapshot(snapshot: ModalStatusSnapshot) -> None:
+    account = snapshot.account
+    if account.status == "ok":
+        account_value = status_value("OK", account.detail)
+    elif account.status == "missing":
+        account_value = status_value("MISSING", account.detail)
+    else:
+        account_value = status_value("UNKNOWN", account.detail)
+    account_warn = account.status != "ok"
+    print_result_panel(
+        "[bold yellow]Modal Account[/bold yellow]" if account_warn else "[bold green]Modal Account[/bold green]",
+        [("Profile", account_value)],
+        border_style="yellow" if account_warn else "green",
+    )
+
     rows: list[tuple[str, str]] = []
-    for status in statuses:
+    for status in snapshot.secrets:
         if status.status == "ok":
             value = f"OK: {status.detail}"
         elif status.status == "missing":
             value = f"MISSING: {status.detail}"
+        elif status.status == "skipped":
+            value = f"SKIPPED: {status.detail}"
         elif status.status == "disabled":
             value = status.detail
         else:
             value = f"UNKNOWN: {status.detail}"
         rows.append((status.label, value))
-    warn = any(status.status in {"missing", "unknown"} for status in statuses)
+    warn = any(status.status in {"missing", "unknown", "skipped"} for status in snapshot.secrets)
     print_result_panel(
         "[bold yellow]Modal Secrets[/bold yellow]" if warn else "[bold green]Modal Secrets[/bold green]",
         rows,
         border_style="yellow" if warn else "green",
     )
+
+
+def print_modal_secret_status(
+    *,
+    known_existing: set[str] | None = None,
+    snapshot: ModalStatusSnapshot | None = None,
+    fresh: bool = False,
+) -> ModalStatusSnapshot:
+    config = load_config()
+    if snapshot is None:
+        if fresh:
+            snapshot = fresh_modal_status_snapshot(config, known_existing=known_existing)
+        else:
+            snapshot = modal_status_snapshot(config, known_existing=known_existing)
+    print_modal_status_snapshot(snapshot)
+    return snapshot
 
 
 def configure_modal_secrets_flow() -> None:
