@@ -19,13 +19,13 @@ def parse_args() -> argparse.Namespace:
         epilog=textwrap.dedent(
             """
             Examples:
-              python modal_newbie_train.py train --config configs/example_lokr.toml --dataset D:\\datasets\\my-style --job my-style
-              python modal_newbie_train.py train --config configs/example_lora.toml --job resume-my-style --no-upload
-              python modal_newbie_train.py train --config configs/example_lora.toml --job long-run --no-upload --detach
-              python modal_newbie_train.py model-download-hf --repo NewBie-AI/NewBie-image-Exp0.1
-              python modal_newbie_train.py volume-list /jobs
-              python modal_newbie_train.py volume-download /jobs/<job>/output/<output-name> outputs/<job>/<output-name>
-              python modal_newbie_train.py job-download --job my-style --config configs/example_lora.toml
+              uv run python modal_newbie_train.py train --config configs/example_lokr.toml --dataset D:\\datasets\\my-style --job my-style
+              uv run python modal_newbie_train.py train --config configs/example_lora.toml --job resume-my-style --no-upload
+              uv run python modal_newbie_train.py train --config configs/example_lora.toml --job long-run --no-upload --detach
+              uv run python modal_newbie_train.py model-download-hf --repo NewBie-AI/NewBie-image-Exp0.1
+              uv run python modal_newbie_train.py volume-list /jobs
+              uv run python modal_newbie_train.py volume-download /jobs/<job>/output/<output-name> outputs/<job>/<output-name>
+              uv run python modal_newbie_train.py job-download --job my-style --config configs/example_lora.toml
             """
         ),
     )

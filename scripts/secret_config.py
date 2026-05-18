@@ -140,7 +140,7 @@ def modal_secret_names() -> tuple[set[str], str | None]:
     try:
         modal = _load_modal()
     except ImportError:
-        return set(), "modal is required. Install dependencies with: pip install -r requirements.txt"
+        return set(), "modal is required. Install dependencies with: uv sync"
     try:
         return {secret.name for secret in modal.Secret.objects.list() if secret.name}, None
     except Exception as exc:

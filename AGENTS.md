@@ -34,19 +34,17 @@ This repository runs Newbie-image LoRA/LoKr training on Modal. The main headless
 Set up a local environment with:
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\activate
-pip install -r requirements.txt
-modal setup
+uv sync
+uv run modal setup
 ```
 
-Run the TUI with `python manage.py`. Run headless training with:
+Run the TUI with `uv run python manage.py`. Run headless training with:
 
 ```powershell
-python modal_newbie_train.py train --config configs/example_lokr.toml --dataset D:\datasets\my-style --job my-style --gpu L40S
+uv run python modal_newbie_train.py train --config configs/example_lokr.toml --dataset D:\datasets\my-style --job my-style --gpu L40S
 ```
 
-Use `python -m py_compile modal_newbie_train.py manage.py scripts/tui.py scripts/config_flow.py scripts/volume_flow.py scripts/training_flow.py scripts/billing.py scripts/training_core.py scripts/model_ops.py scripts/volume_ops.py scripts/cli.py scripts/preferences.py` as the minimum syntax check before committing Python changes that touch the TUI or Modal runner.
+Use `uv run python -m py_compile modal_newbie_train.py manage.py scripts/tui.py scripts/config_flow.py scripts/volume_flow.py scripts/training_flow.py scripts/billing.py scripts/training_core.py scripts/model_ops.py scripts/volume_ops.py scripts/cli.py scripts/preferences.py scripts/secret_config.py` as the minimum syntax check before committing Python changes that touch the TUI or Modal runner.
 
 ## Coding Style & Naming Conventions
 

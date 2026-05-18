@@ -27,27 +27,25 @@ https://modal.com/pricing
 
 - A Modal account.
 - Python 3.11+ locally.
+- uv installed locally.
 - A terminal that supports interactive prompts.
 - A Hugging Face token if the base model repository requires authentication.
 
 Install local dependencies and authenticate Modal:
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\activate
-pip install -r requirements.txt
-modal setup
+uv sync
+uv run modal setup
 ```
 
-If `modal` is not found after installation, keep the virtual environment
-activated before running Modal commands.
+Use `uv run ...` for project commands so they run inside the managed environment.
 
 ## Fast Path: Use The TUI
 
 Start the guided training wizard:
 
 ```powershell
-python manage.py
+uv run python manage.py
 ```
 
 The main menu is organized around the normal training path:
@@ -117,7 +115,7 @@ You can change the Secret name with a local environment variable:
 
 ```powershell
 $env:MODAL_HF_SECRET_NAME="YourSecretName"
-python manage.py
+uv run python manage.py
 ```
 
 You can also persist only the non-sensitive Secret name in gitignored
@@ -229,13 +227,13 @@ advanced workflows.
 Sync the default base model:
 
 ```powershell
-python modal_newbie_train.py model-download-hf
+uv run python modal_newbie_train.py model-download-hf
 ```
 
 Train with upload:
 
 ```powershell
-python modal_newbie_train.py train `
+uv run python modal_newbie_train.py train `
   --config configs/example_lokr.toml `
   --dataset D:\datasets\my-style `
   --job my-style `
@@ -246,7 +244,7 @@ python modal_newbie_train.py train `
 Reuse an already uploaded job config and dataset:
 
 ```powershell
-python modal_newbie_train.py train `
+uv run python modal_newbie_train.py train `
   --config configs/example_lokr.toml `
   --job my-style `
   --no-upload
@@ -255,7 +253,7 @@ python modal_newbie_train.py train `
 Submit a detached background run:
 
 ```powershell
-python modal_newbie_train.py train `
+uv run python modal_newbie_train.py train `
   --config configs/example_lora.toml `
   --job my-style `
   --no-upload `
@@ -265,7 +263,7 @@ python modal_newbie_train.py train `
 Skip runtime dependency install from the upstream trainer requirements:
 
 ```powershell
-python modal_newbie_train.py train `
+uv run python modal_newbie_train.py train `
   --config configs/example_lokr.toml `
   --dataset D:\datasets\my-style `
   --job my-style `
@@ -275,7 +273,7 @@ python modal_newbie_train.py train `
 Download a finished job output using `Model.output_name` from the config:
 
 ```powershell
-python modal_newbie_train.py job-download `
+uv run python modal_newbie_train.py job-download `
   --job my-style `
   --config configs/example_lokr.toml
 ```
@@ -283,14 +281,14 @@ python modal_newbie_train.py job-download `
 List and download Volume paths:
 
 ```powershell
-python modal_newbie_train.py volume-list /jobs
-python modal_newbie_train.py volume-download /jobs/my-style/output/my-style outputs/my-style/my-style
+uv run python modal_newbie_train.py volume-list /jobs
+uv run python modal_newbie_train.py volume-download /jobs/my-style/output/my-style outputs/my-style/my-style
 ```
 
 Remove a Volume path:
 
 ```powershell
-python modal_newbie_train.py volume-rm /jobs/my-style --yes
+uv run python modal_newbie_train.py volume-rm /jobs/my-style --yes
 ```
 
 ## Modal Workspace Layout
@@ -347,16 +345,14 @@ fallback, but the TUI main path uses the baked image.
 ## Command Reference
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\activate
-pip install -r requirements.txt
-modal setup
-python manage.py
-python modal_newbie_train.py model-download-hf
-python modal_newbie_train.py train --config configs/example_lokr.toml --dataset D:\datasets\my-style --job my-style --gpu L40S
-python modal_newbie_train.py train --config configs/example_lokr.toml --job my-style --no-upload --detach
-python modal_newbie_train.py job-download --job my-style --config configs/example_lokr.toml
-python modal_newbie_train.py volume-list /jobs
+uv sync
+uv run modal setup
+uv run python manage.py
+uv run python modal_newbie_train.py model-download-hf
+uv run python modal_newbie_train.py train --config configs/example_lokr.toml --dataset D:\datasets\my-style --job my-style --gpu L40S
+uv run python modal_newbie_train.py train --config configs/example_lokr.toml --job my-style --no-upload --detach
+uv run python modal_newbie_train.py job-download --job my-style --config configs/example_lokr.toml
+uv run python modal_newbie_train.py volume-list /jobs
 ```
 
 ## Contributing
@@ -364,7 +360,7 @@ python modal_newbie_train.py volume-list /jobs
 Keep changes focused on the user workflow. For Python changes, run:
 
 ```powershell
-python -m py_compile modal_newbie_train.py manage.py scripts/tui.py scripts/config_flow.py scripts/volume_flow.py scripts/training_flow.py scripts/billing.py scripts/training_core.py scripts/model_ops.py scripts/volume_ops.py scripts/cli.py scripts/preferences.py
+uv run python -m py_compile modal_newbie_train.py manage.py scripts/tui.py scripts/config_flow.py scripts/volume_flow.py scripts/training_flow.py scripts/billing.py scripts/training_core.py scripts/model_ops.py scripts/volume_ops.py scripts/cli.py scripts/preferences.py scripts/secret_config.py
 git diff --check
 ```
 
