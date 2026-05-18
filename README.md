@@ -27,18 +27,35 @@ https://modal.com/pricing
 
 - A Modal account.
 - Python 3.11+ locally.
-- uv installed locally.
 - A terminal that supports interactive prompts.
 - A Hugging Face token if the base model repository requires authentication.
 
-Install local dependencies and authenticate Modal:
+Install local dependencies with the one-click setup script:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\setup.ps1
+```
+
+On Linux or macOS:
+
+```bash
+bash ./setup.sh
+```
+
+The script detects your operating system, installs `uv` if needed, checks
+network access with `ping google.com`, uses the Tsinghua PyPI mirror when that
+check times out, and lets `uv sync` create or update `.venv`.
+
+If you prefer the manual path:
 
 ```powershell
 uv sync
 uv run modal setup
 ```
 
-Use `uv run ...` for project commands so they run inside the managed environment.
+Use `uv run ...` for project commands so they run inside the managed
+environment. The setup script does not run Modal login automatically; run
+`uv run modal setup` when you need to authenticate Modal.
 
 ## Fast Path: Use The TUI
 
@@ -345,6 +362,7 @@ fallback, but the TUI main path uses the baked image.
 ## Command Reference
 
 ```powershell
+powershell -ExecutionPolicy Bypass -File .\setup.ps1
 uv sync
 uv run modal setup
 uv run python manage.py

@@ -34,9 +34,13 @@ This repository runs Newbie-image LoRA/LoKr training on Modal. The main headless
 Set up a local environment with:
 
 ```powershell
-uv sync
-uv run modal setup
+powershell -ExecutionPolicy Bypass -File .\setup.ps1
 ```
+
+On Linux or macOS, use `bash ./setup.sh`. The setup scripts detect the OS,
+install `uv` when missing, switch `uv sync` to the Tsinghua PyPI mirror when
+`ping google.com` times out, and let `uv sync` create or update `.venv`. They do
+not run `uv run modal setup`; keep Modal authentication explicit.
 
 Run the TUI with `uv run python manage.py`. Run headless training with:
 
