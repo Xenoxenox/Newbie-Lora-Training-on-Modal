@@ -99,6 +99,13 @@ def launch_mode_label(detach: bool) -> str:
     return "[white]Attached (Live Logs)[/white]"
 
 
+def modal_app_cleanup_note(result: dict[str, Any]) -> str | None:
+    stop_command = result.get("stop_command")
+    if not stop_command:
+        return None
+    return f"Modal app normally closes automatically. If it lingers, run: {stop_command}"
+
+
 def print_modal_secret_status(*, known_existing: set[str] | None = None) -> None:
     config = load_config()
     statuses = modal_secret_statuses(config, known_existing=known_existing)
@@ -292,8 +299,11 @@ def run_training_flow() -> None:
                 ("Function Call ID", result.get("function_call_id")),
                 ("Dashboard", dashboard_value(result.get("app_dashboard_url"))),
                 ("Function Call", dashboard_value(result.get("function_call_dashboard_url"))),
+                ("Logs Command", result.get("logs_command")),
+                ("Stop Command", result.get("stop_command")),
                 ("Output", result.get("output_dir")),
                 ("Log", result.get("log_path")),
+                ("Note", modal_app_cleanup_note(result)),
             ],
         )
         return
@@ -306,7 +316,13 @@ def run_training_flow() -> None:
             ("Output", result.get("output_dir")),
             ("Log", result.get("log_path")),
             ("Local App Log", result.get("local_app_log_path")),
+            ("App ID", result.get("app_id")),
+            ("Dashboard", dashboard_value(result.get("app_dashboard_url"))),
+            ("Function Call", dashboard_value(result.get("function_call_dashboard_url"))),
+            ("Logs Command", result.get("logs_command")),
+            ("Stop Command", result.get("stop_command")),
             ("Local Zip", result.get("local_zip")),
+            ("Note", modal_app_cleanup_note(result)),
         ],
         border_style="green" if ok else "red",
     )

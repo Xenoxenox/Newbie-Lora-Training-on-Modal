@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import datetime as dt
+import subprocess
+import sys
 
 from questionary import Choice
 
@@ -13,14 +15,42 @@ from scripts.training_flow import (
     print_modal_secret_status,
     run_training_flow,
 )
-from scripts.tui import ask_select, console, print_banner
+from scripts.secret_config import load_config, modal_auth_is_missing, modal_secret_statuses
+from scripts.tui import ask_confirm, ask_select, console, print_banner, print_status
 from scripts.volume_flow import volume_management_flow
+
+
+def prompt_modal_setup_if_needed() -> None:
+    config = load_config()
+    statuses = modal_secret_statuses(config)
+    if not modal_auth_is_missing(statuses):
+        print_modal_secret_status()
+        return
+
+    print_modal_secret_status()
+    try:
+        run_setup = ask_confirm("Modal token is missing. Do you want to run 'modal setup' now?", True)
+    except KeyboardInterrupt:
+        return
+    if not run_setup:
+        return
+
+    print_status("[bold blue]Starting Modal setup. Complete the browser flow, then return here.[/bold blue]", style="blue")
+    result = subprocess.run([sys.executable, "-m", "modal", "setup"], check=False)
+    if result.returncode == 0:
+        print_status("[bold green]Modal setup finished. Refreshed status is shown below.[/bold green]", style="green")
+    else:
+        print_status(
+            f"[yellow]Modal setup exited with code {result.returncode}. You can retry from the terminal or continue in the TUI.[/yellow]",
+            style="yellow",
+        )
+    print_modal_secret_status()
 
 
 def main() -> None:
     session_start = dt.datetime.now().astimezone()
     print_banner()
-    print_modal_secret_status()
+    prompt_modal_setup_if_needed()
     while True:
         # Re-enter the menu after each action so operators can inspect outputs or clean up.
         try:

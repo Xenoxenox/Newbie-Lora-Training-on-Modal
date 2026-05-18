@@ -145,6 +145,27 @@ def modal_app_logs_command(app_id: str, function_call_id: str) -> list[str]:
     return cmd
 
 
+def shell_command_text(command: list[str]) -> str:
+    return " ".join(shlex.quote(part) for part in command)
+
+
+def modal_app_stop_command(app_id: str) -> list[str]:
+    return [sys.executable, "-m", "modal", "app", "stop", app_id]
+
+
+def print_modal_run_details(app_id: str, app_dashboard_url: str, function_call_id: str, function_call_dashboard_url: str) -> None:
+    logs_command = shell_command_text(modal_app_logs_command(app_id, function_call_id))
+    print(
+        "\nModal app is running.\n"
+        f"App ID: {app_id}\n"
+        f"Dashboard: {app_dashboard_url}\n"
+        f"Function Call ID: {function_call_id}\n"
+        f"Function Call: {function_call_dashboard_url}\n"
+        f"Live logs: {logs_command}\n",
+        flush=True,
+    )
+
+
 class AppLogStreamer:
     """Streams Modal App logs to stdout while teeing them into a local file."""
 
@@ -532,34 +553,44 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
         print(
             "\nSubmitting remote training in detached mode.\n"
             "The Modal app will keep running after the local process exits.\n"
-            "Track progress with: modal app list && modal app logs <app-id>\n"
+            "Modal is allocating remote GPUs and checking container images.\n"
+            "The app ID and log command will print after submission.\n"
             "You can also check https://modal.com/apps.\n"
         )
     else:
         print(
             "\nStarting remote training. This can take a while.\n"
             "This is synchronous mode; disconnecting the local process may cancel this run.\n"
-            "Track progress with: modal app list && modal app logs <app-id>\n"
+            "INFO: Modal is allocating remote GPUs and checking container images.\n"
+            "The app ID and log command will print when the remote function is submitted.\n"
             "You can also check https://modal.com/apps.\n"
         )
 
     with app.run(detach=job.detach):
         if job.detach:
             function_call = modal_train.spawn(payload)
+            app_dashboard_url = app.get_dashboard_url()
+            function_call_dashboard_url = function_call.get_dashboard_url()
+            print_modal_run_details(app.app_id, app_dashboard_url, function_call.object_id, function_call_dashboard_url)
             result = {
                 "ok": True,
                 "submitted": True,
                 "detached": True,
                 "function_call_id": function_call.object_id,
-                "function_call_dashboard_url": function_call.get_dashboard_url(),
+                "function_call_dashboard_url": function_call_dashboard_url,
                 "app_id": app.app_id,
-                "app_dashboard_url": app.get_dashboard_url(),
+                "app_dashboard_url": app_dashboard_url,
                 "job_dir": f"/jobs/{job.slug}",
                 "output_dir": job.remote_output,
                 "log_path": job.remote_log,
+                "logs_command": shell_command_text(modal_app_logs_command(app.app_id, function_call.object_id)),
+                "stop_command": shell_command_text(modal_app_stop_command(app.app_id)),
             }
         else:
             function_call = modal_train.spawn(payload)
+            app_dashboard_url = app.get_dashboard_url()
+            function_call_dashboard_url = function_call.get_dashboard_url()
+            print_modal_run_details(app.app_id, app_dashboard_url, function_call.object_id, function_call_dashboard_url)
             log_streamer = AppLogStreamer(app.app_id, function_call.object_id, local_app_log_path(job.slug))
             log_streamer.start()
             try:
@@ -572,10 +603,12 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
             finally:
                 log_streamer.stop()
             result["app_id"] = app.app_id
-            result["app_dashboard_url"] = app.get_dashboard_url()
+            result["app_dashboard_url"] = app_dashboard_url
             result["function_call_id"] = function_call.object_id
-            result["function_call_dashboard_url"] = function_call.get_dashboard_url()
+            result["function_call_dashboard_url"] = function_call_dashboard_url
             result["local_app_log_path"] = str(log_streamer.local_path)
+            result["logs_command"] = shell_command_text(modal_app_logs_command(app.app_id, function_call.object_id))
+            result["stop_command"] = shell_command_text(modal_app_stop_command(app.app_id))
             if log_streamer.error:
                 result["local_app_log_error"] = log_streamer.error
 

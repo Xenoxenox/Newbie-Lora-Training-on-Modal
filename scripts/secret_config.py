@@ -179,6 +179,24 @@ def modal_secret_statuses(
     ]
 
 
+def modal_auth_is_missing(statuses: list[ModalSecretStatus]) -> bool:
+    auth_markers = (
+        "authenticate",
+        "authentication",
+        "credential",
+        "login",
+        "profile",
+        "token",
+    )
+    for status in statuses:
+        if status.status != "unknown":
+            continue
+        detail = status.detail.lower()
+        if any(marker in detail for marker in auth_markers):
+            return True
+    return False
+
+
 def upsert_modal_secret(secret_name: str, key: str, value: str) -> None:
     modal = _load_modal()
     not_found_error = _modal_not_found_error(modal)
