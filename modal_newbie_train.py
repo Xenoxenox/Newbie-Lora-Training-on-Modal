@@ -2,6 +2,14 @@ from __future__ import annotations
 
 from scripts.cli import main, parse_args
 from scripts.model_ops import build_model_loader_image, download_hf_model_to_volume
+from scripts.secret_config import (
+    CONFIG_PATH,
+    HF_TOKEN_KEY,
+    MODAL_HF_SECRET_NAME_ENV,
+    configured_hf_secret_name,
+    load_config,
+    save_config,
+)
 from scripts.training_core import (
     APP_NAME,
     DEFAULT_HF_REPO,
@@ -45,7 +53,10 @@ __all__ = [
     "DEFAULT_HF_REPO",
     "DEFAULT_HF_SECRET",
     "DEFAULT_VOLUME",
+    "CONFIG_PATH",
+    "HF_TOKEN_KEY",
     "LOCAL_PYTHON_VERSION",
+    "MODAL_HF_SECRET_NAME_ENV",
     "REMOTE_MODELS_DIR",
     "REMOTE_REPO_DIR",
     "REMOTE_ROOT",
@@ -59,6 +70,7 @@ __all__ = [
     "build_image",
     "build_job_config",
     "build_model_loader_image",
+    "configured_hf_secret_name",
     "dataset_upload_target",
     "delete_volume",
     "download_hf_model_to_volume",
@@ -69,6 +81,7 @@ __all__ = [
     "list_all_volumes",
     "list_volume",
     "local_app_log_path",
+    "load_config",
     "main",
     "parse_args",
     "remove_job_directory",
@@ -76,6 +89,7 @@ __all__ = [
     "rename_volume",
     "run_remote_training",
     "safe_slug",
+    "save_config",
     "upload_job_inputs",
 ]
 

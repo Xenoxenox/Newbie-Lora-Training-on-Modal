@@ -6,7 +6,8 @@ from pathlib import Path
 import textwrap
 
 from scripts.model_ops import download_hf_model_to_volume
-from scripts.training_core import DEFAULT_HF_REPO, DEFAULT_HF_SECRET, DEFAULT_VOLUME, UPSTREAM_REPO, TrainJob, run_remote_training
+from scripts.secret_config import configured_hf_secret_name
+from scripts.training_core import DEFAULT_HF_REPO, DEFAULT_VOLUME, UPSTREAM_REPO, TrainJob, run_remote_training
 from scripts.volume_ops import download_job_output, download_volume_path, list_volume, remove_volume_path
 
 
@@ -70,7 +71,7 @@ def parse_args() -> argparse.Namespace:
     model_download.add_argument("--revision", default=None)
     model_download.add_argument("--volume", default=DEFAULT_VOLUME)
     model_download.add_argument("--timeout-minutes", type=int, default=360)
-    model_download.add_argument("--hf-secret", default=DEFAULT_HF_SECRET, help="Modal Secret name containing an HF_TOKEN key.")
+    model_download.add_argument("--hf-secret", default=None, help="Modal Secret name containing an HF_TOKEN key.")
 
     return parser.parse_args()
 
@@ -121,6 +122,7 @@ def main() -> None:
         return
 
     if args.command == "model-download-hf":
-        result = download_hf_model_to_volume(args.repo, args.revision, args.volume, args.timeout_minutes, args.hf_secret)
+        hf_secret = args.hf_secret if args.hf_secret is not None else (configured_hf_secret_name() or "")
+        result = download_hf_model_to_volume(args.repo, args.revision, args.volume, args.timeout_minutes, hf_secret)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         raise SystemExit(0 if result.get("ok") else 1)

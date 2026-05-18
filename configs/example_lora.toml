@@ -35,3 +35,8 @@ lora_target_modules = [
 optimizer_type = "AdamW8bit"
 gradient_clip_norm = 1.0
 use_flash_attention_2 = true
+
+# Optional local Secret-name config lives in gitignored config.toml, not job configs:
+# [modal.secrets]
+# hf_secret_name = "LoRATraining"
+# Token values must stay in Modal Secrets under the HF_TOKEN key.

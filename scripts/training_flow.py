@@ -6,13 +6,13 @@ from pathlib import Path
 from typing import Any
 
 from questionary import Choice
+import questionary
 from rich.console import Group
 from rich.panel import Panel
 from rich.table import Table
 
 from modal_newbie_train import (
     DEFAULT_HF_REPO,
-    DEFAULT_HF_SECRET,
     DEFAULT_VOLUME,
     TrainJob,
     download_hf_model_to_volume,
@@ -22,7 +22,21 @@ from modal_newbie_train import (
 from scripts.billing import format_money
 from scripts.config_flow import ask_dataset_directory, ask_sanitized_name, choose_config
 from scripts.preferences import load_preferences, save_preferences
+from scripts.secret_config import (
+    CONFIG_PATH,
+    HF_SECRET_SPEC,
+    HF_TOKEN_KEY,
+    MODAL_HF_SECRET_NAME_ENV,
+    configured_hf_secret_name,
+    load_config,
+    modal_secret_names,
+    modal_secret_statuses,
+    save_config,
+    set_hf_secret_config,
+    upsert_modal_secret,
+)
 from scripts.tui import (
+    STYLE,
     ask_confirm,
     ask_positive_int,
     ask_select,
@@ -83,6 +97,85 @@ def launch_mode_label(detach: bool) -> str:
     if detach:
         return "[magenta]Detached (Background)[/magenta]"
     return "[white]Attached (Live Logs)[/white]"
+
+
+def print_modal_secret_status(*, known_existing: set[str] | None = None) -> None:
+    config = load_config()
+    statuses = modal_secret_statuses(config, known_existing=known_existing)
+    rows: list[tuple[str, str]] = []
+    for status in statuses:
+        if status.status == "ok":
+            value = f"OK: {status.detail}"
+        elif status.status == "missing":
+            value = f"MISSING: {status.detail}"
+        elif status.status == "disabled":
+            value = status.detail
+        else:
+            value = f"UNKNOWN: {status.detail}"
+        rows.append((status.label, value))
+    warn = any(status.status in {"missing", "unknown"} for status in statuses)
+    print_result_panel(
+        "[bold yellow]Modal Secrets[/bold yellow]" if warn else "[bold green]Modal Secrets[/bold green]",
+        rows,
+        border_style="yellow" if warn else "green",
+    )
+
+
+def configure_modal_secrets_flow() -> None:
+    config = load_config()
+    secret_names, list_error = modal_secret_names()
+    current_secret = configured_hf_secret_name(config)
+    if current_secret is None:
+        description = f"Disabled via {MODAL_HF_SECRET_NAME_ENV}."
+    elif list_error:
+        description = f"Configure {current_secret} with key {HF_TOKEN_KEY}."
+    elif current_secret in secret_names:
+        description = f"Update {current_secret} with key {HF_TOKEN_KEY}."
+    else:
+        description = f"Create {current_secret} with key {HF_TOKEN_KEY}."
+
+    action = ask_select(
+        "Configure Modal Secret:",
+        [
+            Choice("Hugging Face", value="huggingface", description=description),
+            Choice("Back", value="back", description="Return to the main menu."),
+        ],
+        instruction="Tokens are sent to Modal only and are not written to config.toml or logs.",
+    )
+    if action == "back":
+        return
+
+    default_secret = current_secret or HF_SECRET_SPEC["default_name"]
+    choices = [HF_SECRET_SPEC["default_name"], *sorted(secret_names - {HF_SECRET_SPEC["default_name"]})]
+    secret_name = questionary.autocomplete(
+        "Modal Secret name:",
+        choices=choices,
+        default=default_secret,
+        style=STYLE,
+    ).ask()
+    if secret_name is None:
+        raise KeyboardInterrupt
+    secret_name = secret_name.strip()
+    if not secret_name:
+        print_status("[yellow]No secret name entered; secret unchanged.[/yellow]", style="yellow")
+        return
+
+    token = questionary.password(
+        f"{HF_TOKEN_KEY} for Modal Secret {secret_name}:",
+        style=STYLE,
+    ).ask()
+    if token is None:
+        raise KeyboardInterrupt
+    token = token.strip()
+    if not token:
+        print_status("[yellow]No token entered; secret unchanged.[/yellow]", style="yellow")
+        return
+
+    upsert_modal_secret(secret_name, HF_TOKEN_KEY, token)
+    os.environ[MODAL_HF_SECRET_NAME_ENV] = secret_name
+    save_config(set_hf_secret_config(config, secret_name), CONFIG_PATH)
+    print_status(f"[green]Modal Secret {secret_name} is configured.[/green]", style="green")
+    print_modal_secret_status(known_existing={secret_name})
 
 
 def print_training_review(job: TrainJob) -> None:
@@ -232,11 +325,12 @@ def load_model_flow() -> None:
         )
     )
     timeout = ask_positive_int("Timeout minutes", "360", "Timeout minutes")
-    default_secret = os.environ.get("MODAL_HF_SECRET_NAME", "").strip() or DEFAULT_HF_SECRET
+    default_secret = configured_hf_secret_name() or ""
     hf_secret = ask_text(
         "Modal Secret name for HF_TOKEN",
         default_secret,
-        validate=validate_required("Modal Secret name"),
+        validate=None if not default_secret else validate_required("Modal Secret name"),
+        instruction="Leave blank to use the current env/config/default; enter none or false to disable.",
     )
     result = download_hf_model_to_volume(DEFAULT_HF_REPO, None, DEFAULT_VOLUME, timeout, hf_secret)
 

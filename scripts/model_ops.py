@@ -4,13 +4,13 @@ from typing import Any
 
 from scripts.training_core import (
     APP_NAME,
-    DEFAULT_HF_SECRET,
     DEFAULT_VOLUME,
     LOCAL_PYTHON_VERSION,
     REMOTE_MODELS_DIR,
     REMOTE_ROOT,
     _load_modal,
 )
+from scripts.secret_config import configured_hf_secret_name, hf_modal_secrets
 
 
 def build_model_loader_image(modal: Any) -> Any:
@@ -33,7 +33,7 @@ def download_hf_model_to_volume(
     revision: str | None = None,
     volume_name: str = DEFAULT_VOLUME,
     timeout_minutes: int = 360,
-    hf_secret_name: str = DEFAULT_HF_SECRET,
+    hf_secret_name: str | None = None,
 ) -> dict[str, Any]:
     repo_id = repo_id.strip().removeprefix("https://huggingface.co/").strip("/")
     if "/tree/" in repo_id:
@@ -41,12 +41,13 @@ def download_hf_model_to_volume(
         revision = revision or url_revision.strip("/") or None
     if not repo_id or "/" not in repo_id:
         raise ValueError("Hugging Face repo must be in owner/name form or a huggingface.co URL.")
-    hf_secret_name = hf_secret_name.strip() or DEFAULT_HF_SECRET
+    hf_secret_name = hf_secret_name.strip() if hf_secret_name is not None else configured_hf_secret_name()
 
     modal = _load_modal()
     volume = modal.Volume.from_name(volume_name, create_if_missing=True)
     app = modal.App(f"{APP_NAME}-model-loader")
     image = build_model_loader_image(modal)
+    secrets = hf_modal_secrets(modal, hf_secret_name)
 
     payload = {
         "repo_id": repo_id,
@@ -58,7 +59,7 @@ def download_hf_model_to_volume(
         image=image,
         timeout=timeout_minutes * 60,
         volumes={REMOTE_ROOT: volume},
-        secrets=[modal.Secret.from_name(hf_secret_name)],
+        secrets=secrets,
         serialized=True,
     )
     def modal_download_model(remote_payload: dict[str, Any]) -> dict[str, Any]:

@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This repository runs Newbie-image LoRA/LoKr training on Modal. The main headless CLI and compatibility import surface is `modal_newbie_train.py`; its implementation lives under `scripts/`: core training job types and remote launch in `scripts/training_core.py`, Hugging Face model loading in `scripts/model_ops.py`, Volume and output download operations in `scripts/volume_ops.py`, and CLI parsing/dispatch in `scripts/cli.py`. The interactive TUI entrypoint is `manage.py`. TUI implementation also lives under `scripts/`: shared prompt/render helpers in `scripts/tui.py`, config creation and selection in `scripts/config_flow.py`, training/model/output workflows in `scripts/training_flow.py`, Volume workflows in `scripts/volume_flow.py`, local non-sensitive TUI preferences in `scripts/preferences.py`, and exit billing summary in `scripts/billing.py`. Example training configs live in `configs/example_lora.toml` and `configs/example_lokr.toml`. Generated job configs are stored under `configs/jobs/` using timestamped names such as `newbie-20260507-0807.toml`. Runtime outputs, logs, virtual environments, caches, local TUI state, and zip artifacts are intentionally ignored by Git.
+This repository runs Newbie-image LoRA/LoKr training on Modal. The main headless CLI and compatibility import surface is `modal_newbie_train.py`; its implementation lives under `scripts/`: core training job types and remote launch in `scripts/training_core.py`, Hugging Face model loading in `scripts/model_ops.py`, Volume and output download operations in `scripts/volume_ops.py`, and CLI parsing/dispatch in `scripts/cli.py`. The interactive TUI entrypoint is `manage.py`. TUI implementation also lives under `scripts/`: shared prompt/render helpers in `scripts/tui.py`, config creation and selection in `scripts/config_flow.py`, training/model/output workflows in `scripts/training_flow.py`, Volume workflows in `scripts/volume_flow.py`, local non-sensitive TUI preferences in `scripts/preferences.py`, and exit billing summary in `scripts/billing.py`. Example training configs live in `configs/example_lora.toml` and `configs/example_lokr.toml`. Generated job configs are stored under `configs/jobs/` using timestamped names such as `newbie-20260507-0807.toml`. Runtime outputs, logs, virtual environments, caches, local TUI state, local `config.toml`, and zip artifacts are intentionally ignored by Git.
 
 ```text
 .
@@ -24,6 +24,7 @@ This repository runs Newbie-image LoRA/LoKr training on Modal. The main headless
 |   |-- example_lokr.toml
 |   `-- jobs/                    # Generated job configs.
 |-- logs/                        # Runtime logs; ignored except .gitkeep.
+|-- config.toml                  # Local non-sensitive Modal Secret names; ignored by Git.
 |-- .modal-newbie/               # Local TUI preferences; ignored by Git.
 `-- outputs/                     # Downloaded training artifacts; ignored by Git.
 ```
@@ -61,4 +62,4 @@ Recent commits use short imperative summaries, sometimes in Chinese, such as `æ›
 
 ## Security & Configuration Tips
 
-Do not commit `.env`, datasets, model files, logs, outputs, local TUI state under `.modal-newbie/`, or downloaded reference repositories. Treat Modal credentials and Volume contents as private. Confirm destructive Volume operations remain guarded: TUI confirmations live in `scripts/volume_flow.py`, and CLI deletion requires `--yes` in `scripts/cli.py`. Keep TUI preferences non-sensitive only; do not store Hugging Face tokens or Modal credentials there.
+Do not commit `.env`, `config.toml`, datasets, model files, logs, outputs, local TUI state under `.modal-newbie/`, or downloaded reference repositories. Treat Modal credentials and Volume contents as private. Confirm destructive Volume operations remain guarded: TUI confirmations live in `scripts/volume_flow.py`, and CLI deletion requires `--yes` in `scripts/cli.py`. Keep TUI preferences and `config.toml` non-sensitive only; do not store Hugging Face tokens or Modal credentials there. Modal Secret names may be configured through `MODAL_HF_SECRET_NAME` or gitignored `[modal.secrets].hf_secret_name`; missing Secrets should warn and skip injection, while token values must never appear in config, docs, logs, or command panels.

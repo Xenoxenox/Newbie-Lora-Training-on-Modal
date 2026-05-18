@@ -56,6 +56,7 @@ The main menu is organized around the normal training path:
 - `Sync Base Model` downloads `NewBie-AI/NewBie-image-Exp0.1` into `/workspace/Models`.
 - `Run Training` uploads or reuses inputs and launches a Modal training job.
 - `Download Results` downloads `/jobs/<job>/output/<result-folder>`.
+- `Configure Modal Secrets` creates or updates the Hugging Face Modal Secret.
 - `Volume Maintenance` lists, renames, deletes, or opens Modal Volumes.
 
 In submenus, `Ctrl+C` returns to the main menu. At the main menu, `Ctrl+C` exits.
@@ -101,18 +102,37 @@ It downloads the snapshot into:
 /workspace/Models
 ```
 
-For private Hugging Face access, create a Modal Secret named `LoRATraining`
-containing an `HF_TOKEN` key. Enter the real token only in your local terminal;
-do not paste token values into documentation, configs, or logs.
+For private Hugging Face access, create a Modal Secret containing an `HF_TOKEN`
+key. The default Secret name is `LoRATraining`; the TUI shows its status on the
+first screen and `Configure Modal Secrets` can create or update it. Enter the
+real token only in the password prompt or Modal CLI; do not paste token values
+into documentation, configs, command panels, or logs.
 
-You can change the TUI default secret name with a local environment variable:
+If the configured Secret is missing in the active Modal Environment, model sync
+prints a warning and runs without injecting that Secret. This keeps public model
+downloads from failing before the task starts. Authentication or network errors
+from Modal are still surfaced.
+
+You can change the Secret name with a local environment variable:
 
 ```powershell
 $env:MODAL_HF_SECRET_NAME="YourSecretName"
 python manage.py
 ```
 
-Do not write token values into TOML configs, README examples, or logs.
+You can also persist only the non-sensitive Secret name in gitignored
+`config.toml`, which is used by later TUI runs and manual CLI commands:
+
+```toml
+[modal.secrets]
+hf_secret_name = "YourSecretName"
+```
+
+Local environment variables override `config.toml`, and `config.toml` overrides
+the default `LoRATraining` name. Set `MODAL_HF_SECRET_NAME` or
+`hf_secret_name` to an empty string, `none`, or `false` to disable Secret
+injection. Do not write token values into TOML configs, README examples, command
+panels, or logs.
 
 ## Prepare A Dataset
 
@@ -293,6 +313,7 @@ logs/       # local Modal app logs
 outputs/    # downloaded results
 configs/jobs/ # generated job configs
 .modal-newbie/preferences.json # non-sensitive TUI preferences
+config.toml # non-sensitive local Modal Secret names
 ```
 
 The preference file stores only non-sensitive values such as the last config,
@@ -318,7 +339,8 @@ fallback, but the TUI main path uses the baked image.
 
 - Do not commit `.env`, datasets, model files, logs, outputs, or downloaded reference repositories.
 - Treat Modal credentials and Volume contents as private.
-- Keep Hugging Face tokens in Modal Secrets, not in TOML, README examples, or logs.
+- Keep Hugging Face tokens in Modal Secrets, not in TOML, README examples, command panels, or logs.
+- `config.toml` may store Modal Secret names under `[modal.secrets]`, but never token values.
 - Review job names before upload: uploading a job deletes and replaces that job's old `/config.toml` and `/dataset` paths.
 - Be careful with Volume names: some operations can create or target a Modal Volume by name.
 

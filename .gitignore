@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 tui_text_zh.py
 .env
+config.toml
 .venv/
 venv/
 outputs/
