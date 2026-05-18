@@ -55,7 +55,9 @@ uv run modal setup
 
 Use `uv run ...` for project commands so they run inside the managed
 environment. The setup script does not run Modal login automatically; run
-`uv run modal setup` when you need to authenticate Modal.
+`uv run modal setup` when you need to authenticate Modal. The TUI also detects a
+missing Modal token on startup and can launch `modal setup` for you without
+leaving the wizard.
 
 ## Fast Path: Use The TUI
 
@@ -73,6 +75,16 @@ The main menu is organized around the normal training path:
 - `Download Results` downloads `/jobs/<job>/output/<result-folder>`.
 - `Configure Modal Secrets` creates or updates the Hugging Face Modal Secret.
 - `Volume Maintenance` lists, renames, deletes, or opens Modal Volumes.
+
+At startup, the TUI shows two status panels:
+
+- `Modal Account`: whether the local Modal token/profile is usable.
+- `Modal Secrets`: whether the configured Hugging Face Secret exists.
+
+These are separate checks. If the Modal account token is missing, Secret checks
+are skipped until sign-in succeeds. When prompted, choose Yes to run
+`modal setup`; after the web flow finishes, the TUI refreshes the account and
+secret status without requiring a restart.
 
 In submenus, `Ctrl+C` returns to the main menu. At the main menu, `Ctrl+C` exits.
 
@@ -118,10 +130,11 @@ It downloads the snapshot into:
 ```
 
 For private Hugging Face access, create a Modal Secret containing an `HF_TOKEN`
-key. The default Secret name is `LoRATraining`; the TUI shows its status on the
-first screen and `Configure Modal Secrets` can create or update it. Enter the
-real token only in the password prompt or Modal CLI; do not paste token values
-into documentation, configs, command panels, or logs.
+key. The default Secret name is `LoRATraining`; the TUI shows it in the
+`Modal Secrets` panel after the `Modal Account` check succeeds. `Configure Modal
+Secrets` can create or update it. Enter the real token only in the password
+prompt or Modal CLI; do not paste token values into documentation, configs,
+command panels, or logs.
 
 If the configured Secret is missing in the active Modal Environment, model sync
 prints a warning and runs without injecting that Secret. This keeps public model
@@ -186,6 +199,12 @@ Launch modes:
 - `Attached (Live Logs)`: streams Modal logs locally until the run finishes.
 - `Detached (Background)`: submits the job and returns control while Modal continues running.
 
+After submission, Modal may spend time allocating GPUs and checking or building
+the container image before trainer logs appear. The TUI prints an explicit
+allocation/image status message, then prints the App ID, dashboard URL, function
+call, and a copyable `modal app logs ... --follow` command as soon as Modal
+returns them.
+
 Before submission, the TUI shows a pre-flight summary with job name, config,
 dataset, upload mode, GPU, timeout, estimated max GPU cost, launch mode, and
 dependencies. The TUI uses the baked training image by default:
@@ -196,6 +215,11 @@ Dependencies: Baked image
 
 The runtime dependency install path is still available through the CLI for
 advanced fallback scenarios; the TUI does not prompt for it on the main path.
+
+When a run finishes, the result panel includes the remote output path, training
+log path, local app log, App ID, dashboard links, log command, and a
+`modal app stop <app-id>` command. Modal normally closes the app automatically;
+use the stop command only if an app appears to linger.
 
 ## Download Results
 
@@ -355,6 +379,7 @@ fallback, but the TUI main path uses the baked image.
 - Do not commit `.env`, datasets, model files, logs, outputs, or downloaded reference repositories.
 - Treat Modal credentials and Volume contents as private.
 - Keep Hugging Face tokens in Modal Secrets, not in TOML, README examples, command panels, or logs.
+- Keep Modal token IDs and token secrets in Modal's local config or environment only; never paste them into issues, docs, commits, or logs.
 - `config.toml` may store Modal Secret names under `[modal.secrets]`, but never token values.
 - Review job names before upload: uploading a job deletes and replaces that job's old `/config.toml` and `/dataset` paths.
 - Be careful with Volume names: some operations can create or target a Modal Volume by name.
