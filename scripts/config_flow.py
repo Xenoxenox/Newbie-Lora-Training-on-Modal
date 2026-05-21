@@ -15,8 +15,10 @@ from scripts.tui import (
     ask_text,
     clean_path_input,
     console,
+    is_zh,
     print_status,
     print_step,
+    t,
     validate_existing_dir,
     validate_required,
 )
@@ -32,34 +34,34 @@ def ask_sanitized_name(message: str, default: str, noun: str) -> str:
             message,
             default,
             validate=validate_required(noun),
-            instruction="Allowed: letters, numbers, dots, underscores, hyphens.",
+            instruction=t("allowed_name_chars"),
         )
         slug = safe_slug(raw_name)
         if raw_name == slug:
             return slug
-        console.print(f"  [dim]Name preview:[/dim] [white]{raw_name}[/white] [dim]->[/dim] [bold cyan]{slug}[/bold cyan]")
+        console.print(f"  [dim]{t('name_preview')}[/dim] [white]{raw_name}[/white] [dim]->[/dim] [bold cyan]{slug}[/bold cyan]")
         if ask_confirm(
-            f"Use '{slug}' as the {noun} slug?",
+            t("use_slug_confirm", slug=slug, noun=noun),
             True,
-            instruction=f"Your input will be stored as '{slug}' for Modal paths, config files, and local folders.",
+            instruction=t("use_slug_detail", slug=slug),
         ):
             return slug
 
 
 def ask_dataset_directory() -> Path:
     dataset = ask_text(
-        "Local dataset directory",
+        t("dataset_directory"),
         "",
         validate=validate_existing_dir("dataset directory"),
-        instruction=r"Folder containing images and captions. e.g., ./data/my_images or D:\datasets\style",
+        instruction=t("dataset_folder_hint"),
     )
     return Path(clean_path_input(dataset)).expanduser()
 
 
 def config_description(path: Path) -> str:
     if path.parent == JOB_CONFIG_DIR:
-        return "Generated job config."
-    return "Example or hand-written config."
+        return "已生成的任务配置。" if is_zh() else "Generated job config."
+    return t("config_examples")
 
 
 def same_config_path(left: Path, right: Path) -> bool:
@@ -145,78 +147,75 @@ def create_config_flow(*, show_steps: bool = True) -> Path:
     # Generated configs are kept separate from hand-written examples.
     JOB_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     if show_steps:
-        print_step("Step 1: Config Identity")
+        print_step(t("step_config_identity"))
     default_name = dt.datetime.now().strftime("newbie-%Y%m%d-%H%M")
     while True:
-        job_slug = ask_sanitized_name("Config/job name", default_name, "config name")
+        job_slug = ask_sanitized_name(t("config_job_name"), default_name, "config name")
         config_path = JOB_CONFIG_DIR / f"{job_slug}.toml"
         if not config_path.exists() or ask_confirm(
-            f"Replace existing config '{config_path}'?",
+            t("replace_existing_config", path=config_path),
             False,
-            instruction="Choose No to enter a different config name.",
+            instruction=t("config_exists_retry"),
         ):
             break
     if show_steps:
-        print_step("Step 2: Adapter")
+        print_step(t("step_adapter"))
     adapter = ask_select(
-        "Adapter type",
+        t("adapter_type"),
         [
-            Choice("LoKr", value="LoKr", checked=True, description="Recommended default for Newbie-image training quality."),
-            Choice("LoRA", value="LoRA", description="Smaller adapter for quicker, lower-memory experiments."),
+            Choice("LoKr", value="LoKr", checked=True, description=t("adapter_lokr_desc")),
+            Choice("LoRA", value="LoRA", description=t("adapter_lora_desc")),
         ],
     )
-    output_name = ask_sanitized_name("Result folder name", job_slug, "result folder name")
+    output_name = ask_sanitized_name(t("output_model_name"), job_slug, "result folder name")
     if show_steps:
-        print_step("Step 3: Training Defaults")
+        print_step(t("step_training_defaults"))
     resolution = int(
         ask_select(
-            "Training resolution",
+            t("training_resolution"),
             [
-                Choice("1024", value="1024", checked=True, description="Balanced default."),
-                Choice("768", value="768", description="Lower memory and faster iterations."),
-                Choice("1536", value="1536", description="Higher detail with higher GPU cost."),
+                Choice("1024", value="1024", checked=True, description=t("resolution_1024_desc")),
+                Choice("768", value="768", description=t("resolution_768_desc")),
+                Choice("1536", value="1536", description=t("resolution_1536_desc")),
             ],
         )
     )
     official_epochs = "24" if adapter == "LoKr" else "30"
     official_learning_rate = "3e-4 in the LoKr example; 1e-4 in the LoRA example"
     epochs = ask_positive_int(
-        "Epochs",
+        t("epochs"),
         official_epochs,
-        "Epochs",
+        t("epochs"),
         instruction=(
             f"Full passes over the dataset. Official example: {official_epochs} for {adapter}; "
             "more epochs raise cost and overfitting risk."
         ),
     )
     batch_size = ask_positive_int(
-        "Batch size",
+        t("batch_size"),
         "1",
-        "Batch size",
-        instruction="Images per GPU step. Official examples use 4; keep 1 for high resolutions or limited GPU memory.",
+        t("batch_size"),
+        instruction=t("images_per_step"),
     )
     learning_rate = ask_positive_float_text(
-        "Learning rate",
+        t("learning_rate"),
         "1e-4",
-        "Learning rate",
-        instruction=(
-            f"Optimizer step size. Official examples: {official_learning_rate}; "
-            "upstream comments recommend testing 1e-4 or 2e-4."
-        ),
+        t("learning_rate"),
+        instruction=t("learning_rate_hint", official=official_learning_rate),
     )
 
     config_path.write_text(
         render_lora_config(job_slug, output_name, adapter, resolution, epochs, batch_size, learning_rate),
         encoding="utf-8",
     )
-    print_status(f"[bold green]Created[/bold green] {config_path}")
+    print_status(f"[bold green]{'已创建' if is_zh() else 'Created'}[/bold green] {config_path}")
     return config_path
 
 
 def choose_config(
     default_config: str | Path | None = None,
     *,
-    message: str = "Training config",
+    message: str | None = None,
     instruction: str | None = None,
 ) -> Path:
     # Offer every TOML under configs/ so examples and generated jobs share one picker.
@@ -234,11 +233,12 @@ def choose_config(
     ]
     labels.append(
         Choice(
-            "Create a new config",
+            t("create_new_config"),
             value=create_new,
-            description="Build a fresh LoRA/LoKr job config through guided prompts.",
+            description=t("create_new_config_desc"),
         )
     )
+    message = message or t("training_config")
     selected = ask_select(message, labels, default=default_choice, instruction=instruction)
     if selected == create_new:
         return create_config_flow(show_steps=False)

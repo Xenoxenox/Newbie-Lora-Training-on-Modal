@@ -11,6 +11,9 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from tui_text_zh import DEFAULT_LANG, get_pack, normalize_lang
+from scripts.preferences import load_preferences, save_preferences
+
 
 # Keep all TUI prompts on the same questionary theme so the menu reads as one tool.
 STYLE = Style(
@@ -30,13 +33,36 @@ STYLE = Style(
 console = Console()
 
 Validator = Callable[[str], bool | str]
+_LANG = normalize_lang(load_preferences().get("ui_language", DEFAULT_LANG))
+TEXT = get_pack(_LANG)
+
+
+def set_language(lang: str, *, persist: bool = False) -> None:
+    global _LANG, TEXT
+    _LANG = normalize_lang(lang)
+    TEXT = get_pack(_LANG)
+    if persist:
+        save_preferences({"ui_language": _LANG})
+
+
+def get_language() -> str:
+    return _LANG
+
+
+def is_zh() -> bool:
+    return _LANG == "zh"
+
+
+def t(name: str, **kwargs: Any) -> str:
+    value = getattr(TEXT, name)
+    return value.format(**kwargs) if kwargs else value
 
 
 def print_banner() -> None:
     console.print(
         Panel.fit(
-            "[bold cyan]NewBie-image[/bold cyan] [magenta]LoRA Training Wizard[/magenta]\n"
-            "[dim]Guided Modal workflow for NewBie LoRA/LoKr jobs[/dim]",
+            f"[bold cyan]NewBie-image[/bold cyan] [magenta]{TEXT.app_title}[/magenta]\n"
+            f"[dim]{TEXT.app_subtitle}[/dim]",
             border_style="blue",
             padding=(1, 4),
         )
@@ -69,7 +95,7 @@ def print_result_panel(
 
 def print_log_tail(log_tail: str) -> None:
     if log_tail:
-        console.print(Panel(log_tail.rstrip(), title="Log Tail", border_style="yellow"))
+        console.print(Panel(log_tail.rstrip(), title=TEXT.log_tail, border_style="yellow"))
 
 
 def clean_path_input(value: str) -> str:
@@ -87,7 +113,7 @@ def nearby_directory_hint(text: str, *, limit: int = 5) -> str:
         return ""
     if not directories:
         return ""
-    return " Available folders: " + ", ".join(directories)
+    return f" {TEXT.available_folders}: " + ", ".join(directories)
 
 
 def format_instruction(instruction: str | None) -> str | None:
@@ -187,6 +213,8 @@ def validate_required(label: str) -> Validator:
     def _validate(value: str) -> bool | str:
         if value.strip():
             return True
+        if TEXT.code == "zh":
+            return f"请输入{label}。"
         return f"Enter a {label}."
 
     return _validate
@@ -197,8 +225,12 @@ def validate_positive_int(label: str, *, minimum: int = 1) -> Validator:
         try:
             parsed = int(value.strip())
         except ValueError:
+            if TEXT.code == "zh":
+                return f"{label}必须是整数。"
             return f"{label} must be a whole number."
         if parsed < minimum:
+            if TEXT.code == "zh":
+                return f"{label}必须至少为 {minimum}。"
             return f"{label} must be at least {minimum}."
         return True
 
@@ -210,8 +242,12 @@ def validate_positive_float(label: str) -> Validator:
         try:
             parsed = float(value.strip())
         except ValueError:
+            if TEXT.code == "zh":
+                return f"{label}必须是数字，例如 1e-4。"
             return f"{label} must be a number, such as 1e-4."
         if parsed <= 0:
+            if TEXT.code == "zh":
+                return f"{label}必须大于 0。"
             return f"{label} must be greater than 0."
         return True
 
@@ -222,8 +258,12 @@ def validate_existing_dir(label: str) -> Validator:
     def _validate(value: str) -> bool | str:
         text = clean_path_input(value)
         if not text:
+            if TEXT.code == "zh":
+                return f"请输入{label}。"
             return f"Enter a {label}."
         if not Path(text).expanduser().is_dir():
+            if TEXT.code == "zh":
+                return f"未找到{label}：{text}。{nearby_directory_hint(text)}"
             return f"{label.capitalize()} not found: {text}.{nearby_directory_hint(text)}"
         return True
 
@@ -233,8 +273,12 @@ def validate_existing_dir(label: str) -> Validator:
 def validate_volume_name(value: str) -> bool | str:
     text = value.strip()
     if not text:
+        if TEXT.code == "zh":
+            return "请输入 Modal Volume 名称。"
         return "Enter a Modal Volume name."
     if "/" in text or "\\" in text:
+        if TEXT.code == "zh":
+            return "Volume 名称不能包含路径分隔符。"
         return "Volume names cannot contain path separators."
     return True
 

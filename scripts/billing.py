@@ -11,7 +11,7 @@ from rich.console import Group
 from rich.panel import Panel
 from rich.table import Table
 
-from scripts.tui import console
+from scripts.tui import console, t
 
 
 def current_modal_profile() -> str | None:
@@ -117,24 +117,22 @@ def print_exit_summary(session_start: dt.datetime, session_end: dt.datetime) -> 
     summary = Table(show_header=False, box=None, padding=(0, 2))
     summary.add_column("Key", style="dim", no_wrap=True)
     summary.add_column("Value", style="bold white", overflow="fold")
-    summary.add_row("Modal Profile", profile or "Unavailable")
-    summary.add_row("Session Start", format_dt(session_start))
-    summary.add_row("Session End", format_dt(session_end))
-    summary.add_row("Billing Window", f"{format_dt(billing_start)} -> {format_dt(billing_end)}")
-    summary.add_row("Dashboard", "https://modal.com/apps")
+    summary.add_row(t("modal_profile"), profile or t("session_billing_unavailable"))
+    summary.add_row(t("session_start"), format_dt(session_start))
+    summary.add_row(t("session_end"), format_dt(session_end))
+    summary.add_row(t("billing_window"), f"{format_dt(billing_start)} -> {format_dt(billing_end)}")
+    summary.add_row(t("dashboard"), "https://modal.com/apps")
 
     if rows is None:
-        summary.add_row("Billing", "[yellow]Unavailable[/yellow]")
-        note = "[dim]Billing report failed or timed out; session exit was not blocked.[/dim]"
-        console.print(Panel(Group(summary, note), title="[bold blue]Session Closed[/bold blue]", border_style="blue"))
+        summary.add_row("Billing", f"[yellow]{t('session_billing_unavailable')}[/yellow]")
+        note = f"[dim]{t('session_billing_note')}[/dim]"
+        console.print(Panel(Group(summary, note), title=f"[bold blue]{t('session_closed')}[/bold blue]", border_style="blue"))
         return
 
     billing_table, total = billing_summary_table(rows)
-    summary.add_row("Total Reported Cost", f"[bold green]{format_money(total)}[/bold green]")
-    summary.add_row("Rows", str(len(rows)))
-    note = (
-        "[dim]Modal reports full billing intervals only; the latest partial hour may appear later.[/dim]"
-    )
+    summary.add_row(t("session_total_cost"), f"[bold green]{format_money(total)}[/bold green]")
+    summary.add_row(t("session_rows"), str(len(rows)))
+    note = f"[dim]{t('session_billing_wait')}[/dim]"
     content = Group(
         summary,
         billing_table if rows else "[dim]No finalized billing rows for this session window yet.[/dim]",
@@ -143,7 +141,7 @@ def print_exit_summary(session_start: dt.datetime, session_end: dt.datetime) -> 
     console.print(
         Panel(
             content,
-            title="[bold blue]Session Closed[/bold blue]",
+            title=f"[bold blue]{t('session_closed')}[/bold blue]",
             border_style="blue",
         )
     )

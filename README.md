@@ -2,10 +2,9 @@
 
 Run NewBie-image LoRA/LoKr training on Modal from a local terminal.
 
-This project keeps your local machine as the controller. Base model sync,
-dataset upload, training, result download, and Volume maintenance run through a
-small TUI or a headless CLI. GPU work happens inside Modal containers; training
-inputs and outputs live in a Modal Volume.
+中文版本: [README_ZH.md](README_ZH.md)
+
+This project keeps your local machine as the controller. Base model sync, dataset upload, training, result download, and Volume maintenance run through a small TUI or a headless CLI. GPU work happens inside Modal containers; training inputs and outputs live in a Modal Volume.
 
 ## Who this is for
 
@@ -18,8 +17,7 @@ Use this project if you want to:
 - run attached training with live logs or detached training that continues after local disconnect;
 - download finished adapter folders back to `outputs/`.
 
-Modal is usage-based. Check the current Modal pricing page before relying on any
-GPU, storage, or free-credit assumptions:
+Modal is usage-based. Check the current Modal pricing page before relying on any GPU, storage, or free-credit assumptions:
 
 https://modal.com/pricing
 
@@ -42,9 +40,7 @@ On Linux or macOS:
 bash ./setup.sh
 ```
 
-The script detects your operating system, installs `uv` if needed, checks
-network access with `ping google.com`, uses the Tsinghua PyPI mirror when that
-check times out, and lets `uv sync` create or update `.venv`.
+The script detects your operating system, installs `uv` if needed, checks network access with `ping google.com`, uses the Tsinghua PyPI mirror when that check times out, and lets `uv sync` create or update `.venv`.
 
 If you prefer the manual path:
 
@@ -53,11 +49,7 @@ uv sync
 uv run modal setup
 ```
 
-Use `uv run ...` for project commands so they run inside the managed
-environment. The setup script does not run Modal login automatically; run
-`uv run modal setup` when you need to authenticate Modal. The TUI also detects a
-missing Modal token on startup and can launch `modal setup` for you without
-leaving the wizard.
+Use `uv run ...` for project commands so they run inside the managed environment. The setup script does not run Modal login automatically; run `uv run modal setup` when you need to authenticate Modal. The TUI also detects a missing Modal token on startup and can launch `modal setup` for you without leaving the wizard.
 
 ## Fast Path: Use The TUI
 
@@ -66,6 +58,8 @@ Start the guided training wizard:
 ```powershell
 uv run python manage.py
 ```
+
+On startup, choose `English` or `中文`. The choice is stored in `.modal-newbie/preferences.json` and reused on later runs. You can switch language again from the startup language prompt.
 
 The main menu is organized around the normal training path:
 
@@ -81,10 +75,7 @@ At startup, the TUI shows two status panels:
 - `Modal Account`: whether the local Modal token/profile is usable.
 - `Modal Secrets`: whether the configured Hugging Face Secret exists.
 
-These are separate checks. If the Modal account token is missing, Secret checks
-are skipped until sign-in succeeds. When prompted, choose Yes to run
-`modal setup`; after the web flow finishes, the TUI refreshes the account and
-secret status without requiring a restart.
+These are separate checks. If the Modal account token is missing, Secret checks are skipped until sign-in succeeds. When prompted, choose Yes to run `modal setup`; after the web flow finishes, the TUI refreshes the account and secret status without requiring a restart.
 
 In submenus, `Ctrl+C` returns to the main menu. At the main menu, `Ctrl+C` exits.
 
@@ -129,17 +120,9 @@ It downloads the snapshot into:
 /workspace/Models
 ```
 
-For private Hugging Face access, create a Modal Secret containing an `HF_TOKEN`
-key. The default Secret name is `LoRATraining`; the TUI shows it in the
-`Modal Secrets` panel after the `Modal Account` check succeeds. `Configure Modal
-Secrets` can create or update it. Enter the real token only in the password
-prompt or Modal CLI; do not paste token values into documentation, configs,
-command panels, or logs.
+For private Hugging Face access, create a Modal Secret containing an `HF_TOKEN` key. The default Secret name is `LoRATraining`; the TUI shows it in the `Modal Secrets` panel after the `Modal Account` check succeeds. `Configure Modal Secrets` can create or update it. Enter the real token only in the password prompt or Modal CLI; do not paste token values into documentation, configs, command panels, or logs.
 
-If the configured Secret is missing in the active Modal Environment, model sync
-prints a warning and runs without injecting that Secret. This keeps public model
-downloads from failing before the task starts. Authentication or network errors
-from Modal are still surfaced.
+If the configured Secret is missing in the active Modal Environment, model sync prints a warning and runs without injecting that Secret. This keeps public model downloads from failing before the task starts. Authentication or network errors from Modal are still surfaced.
 
 You can change the Secret name with a local environment variable:
 
@@ -148,24 +131,18 @@ $env:MODAL_HF_SECRET_NAME="YourSecretName"
 uv run python manage.py
 ```
 
-You can also persist only the non-sensitive Secret name in gitignored
-`config.toml`, which is used by later TUI runs and manual CLI commands:
+You can also persist only the non-sensitive Secret name in gitignored `config.toml`, which is used by later TUI runs and manual CLI commands:
 
 ```toml
 [modal.secrets]
 hf_secret_name = "YourSecretName"
 ```
 
-Local environment variables override `config.toml`, and `config.toml` overrides
-the default `LoRATraining` name. Set `MODAL_HF_SECRET_NAME` or
-`hf_secret_name` to an empty string, `none`, or `false` to disable Secret
-injection. Do not write token values into TOML configs, README examples, command
-panels, or logs.
+Local environment variables override `config.toml`, and `config.toml` overrides the default `LoRATraining` name. Set `MODAL_HF_SECRET_NAME` or `hf_secret_name` to an empty string, `none`, or `false` to disable Secret injection. Do not write token values into TOML configs, README examples, command panels, or logs.
 
 ## Prepare A Dataset
 
-Use a local folder containing images and matching caption `.txt` files. The
-trainer also supports kohya-style repeated folders such as:
+Use a local folder containing images and matching caption `.txt` files. The trainer also supports kohya-style repeated folders such as:
 
 ```text
 10_character/
@@ -178,8 +155,7 @@ During `Run Training`, choose one dataset source:
 - `Upload local dataset`: uploads your local dataset into `/jobs/<job>/dataset`.
 - `Reuse dataset already in Volume`: skips upload and expects `/jobs/<job>/dataset` to already exist.
 
-This project intentionally keeps datasets job-scoped for now. It does not move
-datasets into a shared `/datasets` tree.
+This project intentionally keeps datasets job-scoped for now. It does not move datasets into a shared `/datasets` tree.
 
 ## Run Training
 
@@ -199,34 +175,23 @@ Launch modes:
 - `Attached (Live Logs)`: streams Modal logs locally until the run finishes.
 - `Detached (Background)`: submits the job and returns control while Modal continues running.
 
-After submission, Modal may spend time allocating GPUs and checking or building
-the container image before trainer logs appear. The TUI prints an explicit
-allocation/image status message, then prints the App ID, dashboard URL, function
-call, and a copyable `modal app logs ... --follow` command as soon as Modal
-returns them.
+After submission, Modal may spend time allocating GPUs and checking or building the container image before trainer logs appear. The TUI prints an explicit allocation/image status message, then prints the App ID, dashboard URL, function call, and a copyable `modal app logs ... --follow` command as soon as Modal returns them.
 
-Before submission, the TUI shows a pre-flight summary with job name, config,
-dataset, upload mode, GPU, timeout, estimated max GPU cost, launch mode, and
-dependencies. The TUI uses the baked training image by default:
+Before submission, the TUI shows a pre-flight summary with job name, config, dataset, upload mode, GPU, timeout, estimated max GPU cost, launch mode, and dependencies. The TUI uses the baked training image by default:
 
 ```text
 Dependencies: Baked image
 ```
 
-The runtime dependency install path is still available through the CLI for
-advanced fallback scenarios; the TUI does not prompt for it on the main path.
+The runtime dependency install path is still available through the CLI for advanced fallback scenarios; the TUI does not prompt for it on the main path.
 
-When a run finishes, the result panel includes the remote output path, training
-log path, local app log, App ID, dashboard links, log command, and a
-`modal app stop <app-id>` command. Modal normally closes the app automatically;
-use the stop command only if an app appears to linger.
+When a run finishes, the result panel includes the remote output path, training log path, local app log, App ID, dashboard links, log command, and a `modal app stop <app-id>` command. Modal normally closes the app automatically; use the stop command only if an app appears to linger.
 
 ## Download Results
 
 Choose `Download Results` after a job finishes.
 
-The config picker is used to read `Model.output_name`. Together with the Modal
-job name, it resolves the remote folder:
+The config picker is used to read `Model.output_name`. Together with the Modal job name, it resolves the remote folder:
 
 ```text
 /jobs/<job>/output/<output_name>
@@ -238,8 +203,7 @@ By default, results download to:
 outputs/<job>/<output_name>
 ```
 
-If your remote output folder differs from `Model.output_name`, use the
-`Remote output folder override` prompt.
+If your remote output folder differs from `Model.output_name`, use the `Remote output folder override` prompt.
 
 ## Volume Maintenance
 
@@ -251,8 +215,7 @@ Choose `Volume Maintenance` in the TUI to:
 - rename a Volume;
 - open the Volume dashboard.
 
-Destructive TUI operations require confirmation. The CLI also refuses Volume
-deletion unless `--yes` is passed.
+Destructive TUI operations require confirmation. The CLI also refuses Volume deletion unless `--yes` is passed.
 
 The default Volume name is:
 
@@ -262,8 +225,14 @@ newbie-image-lora
 
 ## Headless CLI
 
-The TUI is recommended for normal use. The CLI is available for automation and
-advanced workflows.
+The TUI is recommended for normal use. The CLI is available for automation and advanced workflows.
+
+Use `--lang zh` for Chinese CLI help and command status messages:
+
+```powershell
+uv run python modal_newbie_train.py --lang zh --help
+uv run python modal_newbie_train.py --lang zh train --help
+```
 
 Sync the default base model:
 
@@ -355,8 +324,7 @@ configs/jobs/ # generated job configs
 config.toml # non-sensitive local Modal Secret names
 ```
 
-The preference file stores only non-sensitive values such as the last config,
-GPU, timeout, and run mode. It does not store tokens.
+The preference file stores only non-sensitive values such as UI language, the last config, GPU, timeout, and run mode. It does not store tokens.
 
 ## Trainer Source
 
@@ -370,9 +338,7 @@ Inside Modal, this project runs:
 python /workspace/Newbie-Lora-Trainer-Public/NewbieLoraTrainer/train_newbie_lora.py --config_file /workspace/jobs/<job>/config.toml
 ```
 
-The Modal training image bakes stable training dependencies. Runtime
-`install_requirements` logic remains in the headless runner as an advanced
-fallback, but the TUI main path uses the baked image.
+The Modal training image bakes stable training dependencies. Runtime `install_requirements` logic remains in the headless runner as an advanced fallback, but the TUI main path uses the baked image.
 
 ## Security Notes
 
@@ -407,5 +373,4 @@ uv run python -m py_compile modal_newbie_train.py manage.py scripts/tui.py scrip
 git diff --check
 ```
 
-For Modal training changes, record the config, GPU, whether upload was used,
-and whether the run was attached or detached.
+For Modal training changes, record the config, GPU, whether upload was used, and whether the run was attached or detached.

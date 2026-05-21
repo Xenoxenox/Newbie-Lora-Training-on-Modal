@@ -7,7 +7,7 @@ from typing import Any
 
 PREFERENCES_DIR = Path(".modal-newbie")
 PREFERENCES_PATH = PREFERENCES_DIR / "preferences.json"
-ALLOWED_KEYS = {"last_config", "last_gpu", "last_timeout", "last_run_mode"}
+ALLOWED_KEYS = {"last_config", "last_gpu", "last_timeout", "last_run_mode", "ui_language"}
 
 
 def load_preferences() -> dict[str, Any]:
