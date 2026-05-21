@@ -12,6 +12,9 @@ import tempfile
 import threading
 from typing import Any
 
+from tui_text_zh import get_pack, normalize_lang
+from scripts.preferences import load_preferences
+
 
 APP_NAME = "newbie-image-lora-train"
 DEFAULT_VOLUME = "newbie-image-lora"
@@ -42,6 +45,10 @@ BAKED_TRAINER_REQUIREMENTS = (
     "sentencepiece",
     "protobuf",
 )
+
+
+def current_text() -> Any:
+    return get_pack(normalize_lang(load_preferences().get("ui_language")))
 
 
 @dataclasses.dataclass
@@ -154,14 +161,15 @@ def modal_app_stop_command(app_id: str) -> list[str]:
 
 
 def print_modal_run_details(app_id: str, app_dashboard_url: str, function_call_id: str, function_call_dashboard_url: str) -> None:
+    text = current_text()
     logs_command = shell_command_text(modal_app_logs_command(app_id, function_call_id))
     print(
-        "\nModal app is running.\n"
+        f"\n{text.app_running}\n"
         f"App ID: {app_id}\n"
-        f"Dashboard: {app_dashboard_url}\n"
-        f"Function Call ID: {function_call_id}\n"
-        f"Function Call: {function_call_dashboard_url}\n"
-        f"Live logs: {logs_command}\n",
+        f"{text.app_dashboard}: {app_dashboard_url}\n"
+        f"{text.function_call_id}: {function_call_id}\n"
+        f"{text.function_call_dashboard}: {function_call_dashboard_url}\n"
+        f"{text.live_logs}: {logs_command}\n",
         flush=True,
     )
 
@@ -550,18 +558,20 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
         return result
 
     if job.detach:
+        text = current_text()
         print(
-            "\nSubmitting remote training in detached mode.\n"
-            "The Modal app will keep running after the local process exits.\n"
-            "Modal is allocating remote GPUs and checking container images.\n"
+            f"\n{text.detached_submit}\n"
+            f"{text.detached_continue}\n"
+            f"{text.remote_allocating}\n"
             "The app ID and log command will print after submission.\n"
             "You can also check https://modal.com/apps.\n"
         )
     else:
+        text = current_text()
         print(
-            "\nStarting remote training. This can take a while.\n"
-            "This is synchronous mode; disconnecting the local process may cancel this run.\n"
-            "INFO: Modal is allocating remote GPUs and checking container images.\n"
+            f"\n{text.training_live_logs}\n"
+            f"{text.synchronous_warning}\n"
+            f"INFO: {text.remote_allocating}\n"
             "The app ID and log command will print when the remote function is submitted.\n"
             "You can also check https://modal.com/apps.\n"
         )

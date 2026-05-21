@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from tui_text_zh import get_pack, normalize_lang
+from scripts.preferences import load_preferences
 from scripts.training_core import (
     APP_NAME,
     DEFAULT_VOLUME,
@@ -109,9 +111,10 @@ def download_hf_model_to_volume(
         volume.commit()
         return result
 
+    text = get_pack(normalize_lang(load_preferences().get("ui_language")))
     print(
-        "\nCreating the Modal Volume and downloading the model. This can take a while.\n"
-        "Track progress with: modal app list && modal app logs <app-id>\n"
+        f"\n{text.creating_volume_model}\n"
+        f"{text.track_progress}\n"
         "You can also check https://modal.com/apps.\n"
     )
     with app.run():

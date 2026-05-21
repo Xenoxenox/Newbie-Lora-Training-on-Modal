@@ -16,8 +16,22 @@ from scripts.training_flow import (
     run_training_flow,
 )
 from scripts.secret_config import fresh_modal_status_snapshot, load_config, modal_auth_is_missing
-from scripts.tui import ask_confirm, ask_select, console, print_banner, print_status
+from scripts.tui import ask_confirm, ask_select, console, get_language, print_banner, print_status, set_language, t
 from scripts.volume_flow import volume_management_flow
+
+
+def choose_language_flow() -> None:
+    current = get_language()
+    selected = ask_select(
+        t("language_select_prompt"),
+        [
+            Choice("English", value="en", checked=current == "en", description="Use English for the interactive TUI."),
+            Choice("中文", value="zh", checked=current == "zh", description="使用中文界面。"),
+        ],
+        default=current,
+        instruction=t("language_select_desc"),
+    )
+    set_language(str(selected), persist=True)
 
 
 def prompt_modal_setup_if_needed() -> None:
@@ -29,19 +43,19 @@ def prompt_modal_setup_if_needed() -> None:
 
     print_modal_secret_status(snapshot=snapshot)
     try:
-        run_setup = ask_confirm("Modal token is missing. Do you want to run 'modal setup' now?", True)
+        run_setup = ask_confirm(t("modal_setup_prompt"), True)
     except KeyboardInterrupt:
         return
     if not run_setup:
         return
 
-    print_status("[bold blue]Starting Modal setup. Complete the browser flow, then return here.[/bold blue]", style="blue")
+    print_status(f"[bold blue]{t('modal_setup_start')}[/bold blue]", style="blue")
     result = subprocess.run([sys.executable, "-m", "modal", "setup"], check=False)
     if result.returncode == 0:
-        print_status("[bold green]Modal setup finished. Refreshed status is shown below.[/bold green]", style="green")
+        print_status(f"[bold green]{t('modal_setup_done')}[/bold green]", style="green")
     else:
         print_status(
-            f"[yellow]Modal setup exited with code {result.returncode}. You can retry from the terminal or continue in the TUI.[/yellow]",
+            f"[yellow]{t('modal_setup_retry', code=result.returncode)}[/yellow]",
             style="yellow",
         )
     print_modal_secret_status(fresh=True)
@@ -49,21 +63,22 @@ def prompt_modal_setup_if_needed() -> None:
 
 def main() -> None:
     session_start = dt.datetime.now().astimezone()
+    choose_language_flow()
     print_banner()
     prompt_modal_setup_if_needed()
     while True:
         # Re-enter the menu after each action so operators can inspect outputs or clean up.
         try:
             action = ask_select(
-                "What do you want to do?",
+                t("main_menu"),
                 [
-                    Choice("Run Training", value="run_training", description="Start a NewBie LoRA/LoKr training job."),
-                    Choice("Create Job Config", value="create_config", description="Generate a LoRA or LoKr TOML config for a new job."),
-                    Choice("Sync Base Model", value="load_model", description="Download the NewBie base model snapshot into /workspace/Models."),
-                    Choice("Download Results", value="download_output", description="Fetch a completed adapter folder from the Modal Volume."),
-                    Choice("Configure Modal Secrets", value="secrets", description="Create or update Hugging Face Modal secrets."),
-                    Choice("Volume Maintenance", value="volume_management", description="List, rename, delete, or open Modal Volumes."),
-                    Choice("Quit", value="quit", description="Exit without changing anything else."),
+                    Choice(t("main_run_training"), value="run_training", description=t("main_run_training_desc")),
+                    Choice(t("main_create_config"), value="create_config", description=t("main_create_config_desc")),
+                    Choice(t("main_load_model"), value="load_model", description=t("main_load_model_desc")),
+                    Choice(t("main_download_output"), value="download_output", description=t("main_download_output_desc")),
+                    Choice("Configure Modal Secrets" if get_language() == "en" else "配置 Modal Secret", value="secrets", description="Create or update Hugging Face Modal secrets." if get_language() == "en" else "创建或更新 Hugging Face Modal Secret。"),
+                    Choice(t("main_manage_volumes"), value="volume_management", description=t("main_manage_volumes_desc")),
+                    Choice(t("main_quit"), value="quit", description=t("main_quit_desc")),
                 ],
             )
         except KeyboardInterrupt:
@@ -86,7 +101,7 @@ def main() -> None:
             elif action == "volume_management":
                 volume_management_flow()
         except KeyboardInterrupt:
-            console.print("[dim]Returned to main menu.[/dim]")
+            console.print(f"[dim]{t('returned_to_menu')}[/dim]")
         console.print()
     print_exit_summary(session_start, dt.datetime.now().astimezone())
 

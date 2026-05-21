@@ -67,6 +67,14 @@ Start the guided training wizard:
 uv run python manage.py
 ```
 
+On startup, choose `English` or `中文`. The choice is stored in
+`.modal-newbie/preferences.json` and reused on later runs. You can switch
+language again from the startup language prompt.
+
+启动时选择 `English` 或 `中文`。语言偏好会保存到
+`.modal-newbie/preferences.json`，后续启动会默认复用；如果需要切换语言，
+在启动语言提示里重新选择即可。
+
 The main menu is organized around the normal training path:
 
 - `Create Job Config` creates a LoRA/LoKr TOML under `configs/jobs/`.
@@ -265,6 +273,20 @@ newbie-image-lora
 The TUI is recommended for normal use. The CLI is available for automation and
 advanced workflows.
 
+Use `--lang zh` for Chinese CLI help and command status messages:
+
+```powershell
+uv run python modal_newbie_train.py --lang zh --help
+uv run python modal_newbie_train.py --lang zh train --help
+```
+
+使用 `--lang zh` 可以查看中文 CLI 帮助和中文命令状态提示：
+
+```powershell
+uv run python modal_newbie_train.py --lang zh --help
+uv run python modal_newbie_train.py --lang zh train --help
+```
+
 Sync the default base model:
 
 ```powershell
@@ -355,8 +377,8 @@ configs/jobs/ # generated job configs
 config.toml # non-sensitive local Modal Secret names
 ```
 
-The preference file stores only non-sensitive values such as the last config,
-GPU, timeout, and run mode. It does not store tokens.
+The preference file stores only non-sensitive values such as UI language, the
+last config, GPU, timeout, and run mode. It does not store tokens.
 
 ## Trainer Source
 
