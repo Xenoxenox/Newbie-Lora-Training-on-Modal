@@ -103,6 +103,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def print_json_result(data: object) -> None:
+    text = json.dumps(data, ensure_ascii=False, indent=2)
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        print(json.dumps(data, ensure_ascii=True, indent=2))
+
+
 def main() -> None:
     args = parse_args()
     lang = normalize_lang(getattr(args, "lang", "en"))
@@ -124,7 +132,7 @@ def main() -> None:
             max_return_mb=args.max_return_mb,
         )
         result = run_remote_training(job)
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print_json_result(result)
         raise SystemExit(0 if result.get("ok") else 1)
 
     if args.command == "volume-list":
@@ -153,5 +161,5 @@ def main() -> None:
     if args.command == "model-download-hf":
         hf_secret = args.hf_secret if args.hf_secret is not None else (configured_hf_secret_name() or "")
         result = download_hf_model_to_volume(args.repo, args.revision, args.volume, args.timeout_minutes, hf_secret)
-        print(json.dumps(result, ensure_ascii=False, indent=2))
+        print_json_result(result)
         raise SystemExit(0 if result.get("ok") else 1)
