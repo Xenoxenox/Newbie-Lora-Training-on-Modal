@@ -90,6 +90,7 @@ The generated config mirrors the Modal workspace layout:
 /workspace/jobs/<job>/dataset
 /workspace/jobs/<job>/config.toml
 /workspace/jobs/<job>/output
+/workspace/jobs/<job>/output/tensorboard
 ```
 
 Important prompts:
@@ -186,7 +187,13 @@ Dependencies: Baked image
 The runtime dependency install path is still available through the CLI for advanced fallback scenarios; the TUI does not prompt for it on the main path.
 The baked image also installs a prebuilt FlashAttention wheel for the CUDA/PyTorch runtime, so configs with `use_flash_attention_2 = true` can use FlashAttention without a runtime compile step.
 
-When a run finishes, the result panel includes the remote output path, training log path, local app log, App ID, dashboard links, log command, and a `modal app stop <app-id>` command. Modal normally closes the app automatically; use the stop command only if an app appears to linger.
+TensorBoard scalar logs are enabled by default. The runner writes event files under:
+
+```text
+/workspace/jobs/<job>/output/tensorboard
+```
+
+When a run finishes, the result panel includes the remote output path, TensorBoard path, training log path, local app log, App ID, dashboard links, log command, and a `modal app stop <app-id>` command. Modal normally closes the app automatically; use the stop command only if an app appears to linger.
 
 ## Download Results
 
@@ -289,6 +296,13 @@ uv run python modal_newbie_train.py job-download `
   --config configs/example_lokr.toml
 ```
 
+Download TensorBoard event files and view them locally:
+
+```powershell
+uv run python modal_newbie_train.py volume-download /jobs/my-style/output/tensorboard outputs/my-style/tensorboard
+uv run tensorboard --logdir outputs/my-style/tensorboard
+```
+
 List and download Volume paths:
 
 ```powershell
@@ -312,6 +326,7 @@ Modal mounts the training Volume at `/workspace`.
 /workspace/jobs/<job>/config.toml       # uploaded job config
 /workspace/jobs/<job>/dataset           # uploaded dataset
 /workspace/jobs/<job>/output            # adapter outputs
+/workspace/jobs/<job>/output/tensorboard # TensorBoard event files
 /workspace/jobs/<job>/logs/train.log    # remote trainer log
 ```
 

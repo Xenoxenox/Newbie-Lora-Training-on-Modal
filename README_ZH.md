@@ -154,7 +154,13 @@ NewBie-AI/NewBie-image-Exp0.1
 运行时依赖安装路径仍可通过 CLI 作为高级兜底方案；TUI 主路径不会提示它。
 baked image 也会安装匹配 CUDA/PyTorch 运行环境的预编译 FlashAttention wheel，因此 `use_flash_attention_2 = true` 的配置不需要在运行时编译 FlashAttention。
 
-任务完成后，结果面板会包含远程输出路径、训练日志路径、本地 app log、App ID、dashboard 链接、日志命令，以及 `modal app stop <app-id>` 命令。Modal 通常会自动关闭 app；只有在 app 看起来滞留时才使用 stop 命令。
+TensorBoard 标量日志默认启用。runner 会把 event 文件写到：
+
+```text
+/workspace/jobs/<job>/output/tensorboard
+```
+
+任务完成后，结果面板会包含远程输出路径、TensorBoard 路径、训练日志路径、本地 app log、App ID、dashboard 链接、日志命令，以及 `modal app stop <app-id>` 命令。Modal 通常会自动关闭 app；只有在 app 看起来滞留时才使用 stop 命令。
 
 > [!TIP]
 > 训练支持断点续传。
@@ -300,6 +306,13 @@ uv run python modal_newbie_train.py job-download `
   --config configs/example_lokr.toml
 ```
 
+下载 TensorBoard event 文件并在本地查看：
+
+```powershell
+uv run python modal_newbie_train.py volume-download /jobs/my-style/output/tensorboard outputs/my-style/tensorboard
+uv run tensorboard --logdir outputs/my-style/tensorboard
+```
+
 列出并下载 Volume 路径：
 
 ```powershell
@@ -322,6 +335,7 @@ Modal 会把训练 Volume 挂载到 `/workspace`。
 /workspace/jobs/<job>/config.toml       # 上传的任务配置
 /workspace/jobs/<job>/dataset           # 上传的数据集
 /workspace/jobs/<job>/output            # adapter 输出
+/workspace/jobs/<job>/output/tensorboard # TensorBoard event 文件
 /workspace/jobs/<job>/logs/train.log    # 远程 trainer 日志
 ```
 
