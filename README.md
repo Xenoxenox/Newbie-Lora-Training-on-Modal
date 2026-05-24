@@ -184,6 +184,7 @@ Dependencies: Baked image
 ```
 
 The runtime dependency install path is still available through the CLI for advanced fallback scenarios; the TUI does not prompt for it on the main path.
+The baked image also installs a prebuilt FlashAttention wheel for the CUDA/PyTorch runtime, so configs with `use_flash_attention_2 = true` can use FlashAttention without a runtime compile step.
 
 When a run finishes, the result panel includes the remote output path, training log path, local app log, App ID, dashboard links, log command, and a `modal app stop <app-id>` command. Modal normally closes the app automatically; use the stop command only if an app appears to linger.
 
@@ -338,7 +339,9 @@ Inside Modal, this project runs:
 python /workspace/Newbie-Lora-Trainer-Public/NewbieLoraTrainer/train_newbie_lora.py --config_file /workspace/jobs/<job>/config.toml
 ```
 
-The Modal training image bakes stable training dependencies. Runtime `install_requirements` logic remains in the headless runner as an advanced fallback, but the TUI main path uses the baked image.
+The Modal training image bakes stable training dependencies. It installs the CUDA 12.4 PyTorch wheel first, then installs the matching prebuilt `flash-attn==2.7.4.post1` wheel before the remaining trainer dependencies. Runtime `install_requirements` logic remains in the headless runner as an advanced fallback, but the TUI main path uses the baked image.
+
+The upstream trainer patch still keeps FlashAttention optional: if `flash_attn` cannot be imported, training falls back to the native PyTorch attention path instead of failing at import time.
 
 ## Security Notes
 

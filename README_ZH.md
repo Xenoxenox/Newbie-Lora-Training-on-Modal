@@ -152,6 +152,7 @@ NewBie-AI/NewBie-image-Exp0.1
 提交后，Modal 可能会先分配 GPU、检查或构建容器镜像，然后训练日志才会出现。TUI 会先打印明确的资源分配/镜像状态，再在 Modal 返回 App ID 后显示 App ID、dashboard 链接、function call 和可复制的 `modal app logs ... --follow` 命令。
 
 运行时依赖安装路径仍可通过 CLI 作为高级兜底方案；TUI 主路径不会提示它。
+baked image 也会安装匹配 CUDA/PyTorch 运行环境的预编译 FlashAttention wheel，因此 `use_flash_attention_2 = true` 的配置不需要在运行时编译 FlashAttention。
 
 任务完成后，结果面板会包含远程输出路径、训练日志路径、本地 app log、App ID、dashboard 链接、日志命令，以及 `modal app stop <app-id>` 命令。Modal 通常会自动关闭 app；只有在 app 看起来滞留时才使用 stop 命令。
 
@@ -348,7 +349,9 @@ https://cnb.cool/xChenNing/Newbie-Lora-Trainer-Public
 python /workspace/Newbie-Lora-Trainer-Public/NewbieLoraTrainer/train_newbie_lora.py --config_file /workspace/jobs/<job>/config.toml
 ```
 
-Modal 训练镜像会预先打包稳定的训练依赖。运行时的 `install_requirements` 逻辑仍保留在 headless runner 中作为高级兜底，但 TUI 主路径默认使用 baked image。
+Modal 训练镜像会预先打包稳定的训练依赖。镜像会先安装 CUDA 12.4 PyTorch wheel，再安装匹配的预编译 `flash-attn==2.7.4.post1` wheel，最后安装其他 trainer 依赖。运行时的 `install_requirements` 逻辑仍保留在 headless runner 中作为高级兜底，但 TUI 主路径默认使用 baked image。
+
+上游 trainer 补丁仍保留 FlashAttention 可选策略：如果 `flash_attn` 无法导入，训练会 fallback 到原生 PyTorch attention 路径，而不是在导入阶段失败。
 
 ## 安全说明
 
