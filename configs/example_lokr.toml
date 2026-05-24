@@ -2,6 +2,7 @@
 base_model_path = "/workspace/Models"
 trust_remote_code = true
 output_dir = "/workspace/jobs/example-lokr/output"
+logging_dir = "/workspace/jobs/example-lokr/output/tensorboard"
 output_name = "newbie_lokr"
 adapter_type = "lyco_lokr"
 

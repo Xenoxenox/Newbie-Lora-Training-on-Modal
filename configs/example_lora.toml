@@ -2,6 +2,7 @@
 base_model_path = "/workspace/Models"
 trust_remote_code = true
 output_dir = "/workspace/jobs/example-lora/output"
+logging_dir = "/workspace/jobs/example-lora/output/tensorboard"
 output_name = "newbie_lora"
 
 train_data_dir = "/workspace/jobs/example-lora/dataset"

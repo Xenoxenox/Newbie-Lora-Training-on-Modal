@@ -85,6 +85,7 @@ def render_lora_config(
 base_model_path = "/workspace/Models"
 trust_remote_code = true
 output_dir = "/workspace/jobs/{job_slug}/output"
+logging_dir = "/workspace/jobs/{job_slug}/output/tensorboard"
 output_name = "{output_name}"
 train_data_dir = "/workspace/jobs/{job_slug}/dataset"
 resolution = {resolution}

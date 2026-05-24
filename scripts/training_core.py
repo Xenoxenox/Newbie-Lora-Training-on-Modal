@@ -30,7 +30,9 @@ BAKED_TRAINER_REQUIREMENTS = (
     "modal",
     "toml>=0.10.2",
     "huggingface-hub>=0.20.0",
+    "setuptools<81",
     "accelerate>=0.27.0",
+    "tensorboard>=2.16.0",
     "diffusers>=0.27.0",
     "transformers>=4.38.0,<5",
     "safetensors>=0.4.0",
@@ -109,6 +111,14 @@ class TrainJob:
     @property
     def remote_output(self) -> str:
         return f"{self.remote_job_dir}/output"
+
+    @property
+    def volume_tensorboard_dir(self) -> str:
+        return f"{self.volume_job_dir}/output/tensorboard"
+
+    @property
+    def remote_tensorboard_dir(self) -> str:
+        return f"{self.remote_output}/tensorboard"
 
     @property
     def remote_log(self) -> str:
@@ -256,6 +266,7 @@ def build_job_config(job: TrainJob) -> str:
     model_config = config.setdefault("Model", {})
     model_config["train_data_dir"] = job.remote_dataset
     model_config["output_dir"] = job.remote_output
+    model_config["logging_dir"] = job.remote_tensorboard_dir
     return toml.dumps(config)
 
 
@@ -344,6 +355,8 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
         "remote_config": job.remote_config,
         "remote_dataset": job.remote_dataset,
         "remote_output": job.remote_output,
+        "volume_tensorboard_dir": job.volume_tensorboard_dir,
+        "remote_tensorboard_dir": job.remote_tensorboard_dir,
         "remote_log": job.remote_log,
         "install_requirements": job.install_requirements,
         "max_return_mb": job.max_return_mb,
@@ -374,9 +387,11 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
         job_dir = Path(remote_payload["remote_job_dir"])
         log_path = Path(remote_payload["remote_log"])
         output_dir = Path(remote_payload["remote_output"])
+        tensorboard_dir = Path(remote_payload["remote_tensorboard_dir"])
         config_file = Path(remote_payload["remote_config"])
         log_path.parent.mkdir(parents=True, exist_ok=True)
         output_dir.mkdir(parents=True, exist_ok=True)
+        tensorboard_dir.mkdir(parents=True, exist_ok=True)
 
         def run(cmd: list[str], cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
             with log_path.open("a", encoding="utf-8") as log:
@@ -460,14 +475,39 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
                 if old_call not in trainer_text:
                     raise RuntimeError(f"Unable to patch CLIP dtype call in {trainer_py}")
                 trainer_text = trainer_text.replace(old_call, new_call)
+            tracker_project_old = "    output_dir = config['Model']['output_dir']\n    os.makedirs(output_dir, exist_ok=True)\n"
+            tracker_project_new = (
+                "    output_dir = config['Model']['output_dir']\n"
+                "    os.makedirs(output_dir, exist_ok=True)\n"
+                "    logging_dir = config['Model'].get('logging_dir') or output_dir\n"
+                "    os.makedirs(logging_dir, exist_ok=True)\n"
+            )
+            if tracker_project_old not in trainer_text:
+                raise RuntimeError(f"Unable to patch TensorBoard logging dir setup in {trainer_py}")
+            trainer_text = trainer_text.replace(tracker_project_old, tracker_project_new, 1)
+            tracker_project_arg = "        project_dir=output_dir,"
+            if tracker_project_arg not in trainer_text:
+                raise RuntimeError(f"Unable to patch TensorBoard project dir in {trainer_py}")
+            trainer_text = trainer_text.replace(tracker_project_arg, "        project_dir=logging_dir,", 1)
             trainer_py.write_text(trainer_text, encoding="utf-8")
 
             requirements = repo_dir / "NewbieLoraTrainer" / "requirements.txt"
             requirements_text = requirements.read_text(encoding="utf-8")
             requirements_text = requirements_text.replace("transformers>=4.38.0", "transformers>=4.38.0,<5")
+            if "setuptools" not in requirements_text.lower():
+                requirements_text = requirements_text.rstrip() + "\nsetuptools<81\n"
+            if "tensorboard" not in requirements_text.lower():
+                requirements_text = requirements_text.rstrip() + "\ntensorboard>=2.16.0\n"
             requirements.write_text(requirements_text, encoding="utf-8")
             if remote_payload["install_requirements"]:
                 run([sys.executable, "-m", "pip", "install", "-U", "-r", str(requirements)])
+
+            import toml
+
+            trainer_config = toml.load(str(config_file))
+            trainer_model_config = trainer_config.setdefault("Model", {})
+            trainer_model_config["logging_dir"] = str(tensorboard_dir)
+            config_file.write_text(toml.dumps(trainer_config), encoding="utf-8")
 
             command = [
                 sys.executable,
@@ -545,6 +585,8 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
                 "seconds": round(time.time() - started, 2),
                 "job_dir": str(job_dir),
                 "output_dir": str(output_dir),
+                "tensorboard_volume_path": str(remote_payload["volume_tensorboard_dir"]),
+                "tensorboard_dir": str(tensorboard_dir),
                 "log_path": str(log_path),
                 "artifacts": artifacts,
                 "returned_zip": returned_zip,
@@ -561,6 +603,8 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
                 "error": repr(exc),
                 "job_dir": str(job_dir),
                 "output_dir": str(output_dir),
+                "tensorboard_volume_path": str(remote_payload["volume_tensorboard_dir"]),
+                "tensorboard_dir": str(tensorboard_dir),
                 "log_path": str(log_path),
                 "artifacts": [],
                 "returned_zip": None,
@@ -605,6 +649,8 @@ def run_remote_training(job: TrainJob) -> dict[str, Any]:
                 "app_dashboard_url": app_dashboard_url,
                 "job_dir": f"/jobs/{job.slug}",
                 "output_dir": job.remote_output,
+                "tensorboard_volume_path": job.volume_tensorboard_dir,
+                "tensorboard_dir": job.remote_tensorboard_dir,
                 "log_path": job.remote_log,
                 "logs_command": shell_command_text(modal_app_logs_command(app.app_id, function_call.object_id)),
                 "stop_command": shell_command_text(modal_app_stop_command(app.app_id)),
