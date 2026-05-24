@@ -45,6 +45,16 @@ BAKED_TRAINER_REQUIREMENTS = (
     "sentencepiece",
     "protobuf",
 )
+FLASH_ATTN_RELEASE_BASE = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.7.4.post1"
+
+
+def flash_attn_wheel_url() -> str:
+    python_tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
+    return (
+        f"{FLASH_ATTN_RELEASE_BASE}/"
+        f"flash_attn-2.7.4.post1+cu12torch2.6cxx11abiFALSE-"
+        f"{python_tag}-{python_tag}-linux_x86_64.whl"
+    )
 
 
 def current_text() -> Any:
@@ -138,6 +148,8 @@ def modal_app_logs_command(app_id: str, function_call_id: str) -> list[str]:
             check=False,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=5,
         )
     except (OSError, subprocess.SubprocessError):
@@ -265,6 +277,7 @@ def build_image(modal: Any) -> Any:
         .run_commands(
             "python -m pip install --upgrade pip",
             "pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124",
+            f"pip install {shlex.quote(flash_attn_wheel_url())}",
             "pip install " + " ".join(shlex.quote(req) for req in BAKED_TRAINER_REQUIREMENTS),
         )
         .env(
