@@ -19,11 +19,11 @@ def build_model_loader_image(modal: Any) -> Any:
     # Keep model loading separate from the heavier CUDA training image.
     return (
         modal.Image.debian_slim(python_version=LOCAL_PYTHON_VERSION)
-        .pip_install("huggingface-hub>=0.23.0", "hf-transfer>=0.1.6")
+        .pip_install("huggingface-hub>=0.23.0", "hf-xet>=1.5.0")
         .env(
             {
                 "HF_HOME": f"{REMOTE_ROOT}/.cache/huggingface",
-                "HF_HUB_ENABLE_HF_TRANSFER": "1",
+                "HF_XET_HIGH_PERFORMANCE": "1",
                 "PYTHONUNBUFFERED": "1",
             }
         )
