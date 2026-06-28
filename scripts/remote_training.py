@@ -111,6 +111,16 @@ def modal_train(remote_payload: dict[str, Any]) -> dict[str, Any]:
             if old_call not in trainer_text:
                 raise RuntimeError(f"Unable to patch CLIP dtype call in {trainer_py}")
             trainer_text = trainer_text.replace(old_call, new_call)
+        tokenizer_replacements = {
+            "clip_tokenizer = AutoTokenizer.from_pretrained(clip_model_path, trust_remote_code=True)":
+                "clip_tokenizer = AutoTokenizer.from_pretrained(clip_model_path, trust_remote_code=True, fix_mistral_regex=False)",
+            "clip_tokenizer = AutoTokenizer.from_pretrained(clip_path, trust_remote_code=True)":
+                "clip_tokenizer = AutoTokenizer.from_pretrained(clip_path, trust_remote_code=True, fix_mistral_regex=False)",
+        }
+        for old_call, new_call in tokenizer_replacements.items():
+            if old_call not in trainer_text:
+                raise RuntimeError(f"Unable to patch CLIP tokenizer call in {trainer_py}")
+            trainer_text = trainer_text.replace(old_call, new_call)
         tracker_project_old = "    output_dir = config['Model']['output_dir']\n    os.makedirs(output_dir, exist_ok=True)\n"
         tracker_project_new = (
             "    output_dir = config['Model']['output_dir']\n"
